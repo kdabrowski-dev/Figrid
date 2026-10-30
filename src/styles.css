@@ -124,12 +124,21 @@ body {
   border-radius: 3px;
   opacity: 0;
   transform: translateY(2px);
-  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition:
+    opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .last-delta-pill.visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+.last-delta-pill.fading-out {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .score-main-wrap {
@@ -148,13 +157,13 @@ body {
   letter-spacing: 1px;
 }
 
-/* Floating +pts / -pts popups above centered score */
+/* Floating +pts / -pts popups above centered score with smooth fade-out at the end */
 .delta-popup-layer {
   position: absolute;
   top: -12px;
   left: 50%;
-  width: 240px;
-  height: 50px;
+  width: 260px;
+  height: 55px;
   transform: translateX(-50%);
   pointer-events: none;
   overflow: visible;
@@ -164,25 +173,29 @@ body {
   position: absolute;
   left: 50%;
   top: 6px;
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
   font-weight: bold;
   will-change: transform, opacity;
-  animation: arcadeFloatUp 0.78s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: arcadeFloatFadeOut 1.05s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes arcadeFloatUp {
+@keyframes arcadeFloatFadeOut {
   0% {
-    opacity: 1;
-    transform: translate(calc(-50% + var(--jitter-x, 0px)), 4px) scale(0.85);
+    opacity: 0;
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), 6px) scale(0.82);
   }
-  28% {
+  18% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--jitter-x, 0px)), -12px) scale(1.12);
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -8px) scale(1.1);
+  }
+  62% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -18px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--jitter-x, 0px)), -32px) scale(0.95);
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -34px) scale(0.92);
   }
 }
 
@@ -321,30 +334,58 @@ body {
 .cell-digit {
   position: relative;
   z-index: 2;
+  transition: color 0.24s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.24s ease;
 }
 
-/* Reinforced Shield proximity layer:
-   Invisible beyond 7 steps (--shield-alpha: 0).
-   Gradually fades in from 7 steps away up to 1 step away using --shield-alpha. */
-.cell-shield-layer {
+/* ============================================================================
+   SVG SHIELD OUTLINE BEHIND REINFORCED DIGITS (SMOOTH STEP-BY-STEP FADE-IN)
+   ============================================================================ */
+.cell-shield-svg {
   position: absolute;
-  inset: 1px;
-  border-radius: 3px;
-  pointer-events: none;
+  width: 28px;
+  height: 28px;
+  top: 50%;
+  left: 50%;
   z-index: 1;
+  pointer-events: none;
   opacity: var(--shield-alpha, 0);
-  background: radial-gradient(
-    circle,
-    rgba(56, 189, 248, 0.34) 0%,
-    rgba(14, 116, 144, 0.2) 100%
-  );
-  border: 1.5px dashed rgba(56, 189, 248, 0.9);
-  box-shadow: inset 0 0 8px rgba(56, 189, 248, 0.55), 0 0 6px rgba(56, 189, 248, 0.35);
-  transition: opacity 0.08s linear;
+  transform: translate(-50%, -50%) scale(calc(0.84 + var(--shield-alpha, 0) * 0.18));
+  filter: drop-shadow(0 0 calc(var(--shield-alpha, 0) * 7px) rgba(0, 240, 255, 0.75));
+  transition:
+    opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.shield-outline-path {
+  fill: rgba(0, 240, 255, 0.13);
+  stroke: #38bdf8;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  transition: fill 0.2s ease, stroke 0.2s ease;
+}
+
+/* As the player gets closer within the 7-step window, the digit itself subtly tints toward cyan */
 .cell.shield-approaching .cell-digit {
-  color: color-mix(in srgb, var(--text-unpressed) 40%, #7dd3fc 60%);
+  color: color-mix(
+    in srgb,
+    var(--text-unpressed) calc((1 - var(--shield-alpha, 0)) * 100%),
+    #7dd3fc calc(var(--shield-alpha, 0) * 100%)
+  );
+  text-shadow: 0 0 calc(var(--shield-alpha, 0) * 6px) rgba(56, 189, 248, 0.55);
+}
+
+/* On active cell, if it has an intact shield, make the shield outline bright white/gold so it stands out */
+.cell.active .cell-shield-svg {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.06);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9));
+}
+
+.cell.active .shield-outline-path {
+  fill: rgba(5, 8, 17, 0.22);
+  stroke: #050811;
+  stroke-width: 2.2;
 }
 
 /* After 1st hit on a Reinforced cell (Cracked Shield, waiting for 2nd hit for 2X bonus) */
@@ -357,8 +398,16 @@ body {
   z-index: 4;
 }
 
-.cell.shield-cracked .cell-shield-layer {
-  opacity: 0 !important;
+.cell.shield-cracked .cell-shield-svg {
+  opacity: 0.95 !important;
+  transform: translate(-50%, -50%) scale(1.12);
+}
+
+.cell.shield-cracked .shield-outline-path {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
 }
 
 /* Currently targeted cell */
@@ -379,8 +428,9 @@ body {
   color: var(--text-done);
 }
 
-.cell.done .cell-shield-layer {
-  display: none;
+.cell.done .cell-shield-svg {
+  opacity: 0 !important;
+  transform: translate(-50%, -50%) scale(0.6);
 }
 
 /* Pulse animation when a hidden sequence is completed fast enough */
@@ -436,7 +486,7 @@ body {
 }
 
 /* ============================================================================
-   8-BIT SEQUENCE BANNERS
+   8-BIT SEQUENCE BANNERS (WITH SMOOTH FADE-IN AND FADE-OUT AT THE END)
    ============================================================================ */
 .sequence-banners-overlay {
   position: fixed;
@@ -459,37 +509,59 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  animation: bannerPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+  animation: bannerLifecycle 1.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .seq-banner.phi-special-banner {
   background: linear-gradient(135deg, rgba(25, 20, 5, 0.96) 0%, rgba(55, 40, 8, 0.96) 100%);
   border-width: 3px;
-  animation: phiBannerPop 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: phiBannerLifecycle 2.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes bannerPopIn {
+@keyframes bannerLifecycle {
   0% {
     opacity: 0;
     transform: translateY(-12px) scale(0.85);
   }
-  100% {
+  14% {
+    opacity: 1;
+    transform: translateY(0) scale(1.03);
+  }
+  22% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+  74% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.94);
+  }
 }
 
-@keyframes phiBannerPop {
+@keyframes phiBannerLifecycle {
   0% {
     opacity: 0;
     transform: translateY(-18px) scale(0.75);
   }
-  60% {
+  14% {
+    opacity: 1;
     transform: translateY(2px) scale(1.06);
   }
-  100% {
+  24% {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.93);
   }
 }
 
@@ -686,6 +758,18 @@ body {
   line-height: 1.45;
 }
 
+.binding-error-alert {
+  background: rgba(255, 42, 84, 0.14);
+  border: 1.5px solid var(--accent-red);
+  color: #fda4af;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 3px;
+  animation: cellShake 0.2s linear;
+}
+
 .preset-bar {
   display: flex;
   gap: 10px;
@@ -735,6 +819,19 @@ body {
   border: 1px solid #334155;
   padding: 2px 6px;
   border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.key-chip:hover {
+  border-color: #64748b;
+}
+
+.chip-remove {
+  color: #f87171;
+  font-size: 11px;
 }
 
 .binding-actions {

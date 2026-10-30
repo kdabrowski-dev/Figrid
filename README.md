@@ -5,7 +5,7 @@ Ultra-responsive web speed-typing game built with React + TypeScript (Zero Input
 ## Features
 
 - **21 × 13 Grid (273 Digits)**: Clean, high-contrast unpressed digits on a plain background; tiles materialize as digits are cleared.
-- **Proximity Reinforced Shields (🛡)**: Shielded digits require a double-tap (the second hit awards a **2× speed point multiplier**) and only begin fading into view **7 steps ahead**, growing brighter with each step closer.
+- **Proximity Reinforced Shields**: Shielded digits require a double-tap (the second hit awards a **2x speed point multiplier**) and only begin fading into view **7 steps ahead**, growing brighter with each step closer.
 - **Hidden Muscle-Memory Sequences**: Secret digit patterns are embedded into every board with a strictly fair point budget—discover them by typing fast!
 - **5-Stop Dynamic Speed Spectrum**: Floating point deltas (`+pts`) and the centered score counter shift dynamically across a 5-color arcade gradient based on typing speed.
 - **Live Speed Telemetry Chart**: Real-time HTML5 Canvas graph tracking keys/sec, reaction deltas, 2× shield hits, and discovered sequences.

@@ -20,11 +20,13 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
 }) => {
   const [draft, setDraft] = useState<KeyBindingsMap>(() => structuredClone(bindings));
   const [listeningDigit, setListeningDigit] = useState<number | null>(null);
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setDraft(structuredClone(bindings));
       setListeningDigit(null);
+      setConflictError(null);
     }
   }, [isOpen, bindings]);
 
@@ -45,12 +47,28 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
         return;
       }
 
+      // Prevent binding a key that is already assigned to ANY digit (including the current one)
+      for (let d = 0; d <= 9; d++) {
+        const assignedKeys = draft[d] || [];
+        if (assignedKeys.includes(rawKey)) {
+          const keyLabel = formatKeyLabel(rawKey);
+          if (d === listeningDigit) {
+            setConflictError(`Key [${keyLabel}] is already bound to DIGIT ${d}!`);
+          } else {
+            setConflictError(
+              `Key [${keyLabel}] is already assigned to DIGIT ${d}! Cannot bind duplicate keys.`
+            );
+          }
+          setListeningDigit(null);
+          return;
+        }
+      }
+
+      setConflictError(null);
       setDraft((prev) => {
         const next: KeyBindingsMap = structuredClone(prev);
         const existing = next[listeningDigit] || [];
-        if (!existing.includes(rawKey)) {
-          next[listeningDigit] = [...existing.slice(-2), rawKey];
-        }
+        next[listeningDigit] = [...existing.slice(-2), rawKey];
         return next;
       });
       setListeningDigit(null);
@@ -58,23 +76,51 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
 
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [listeningDigit, isOpen]);
+  }, [listeningDigit, isOpen, draft]);
 
   if (!isOpen) return null;
 
+  const handleRemoveSingleKey = (digit: number, keyToRemove: string) => {
+    setConflictError(null);
+    setDraft((prev) => {
+      const currentKeys = prev[digit] || [String(digit)];
+      if (currentKeys.length <= 1) {
+        setConflictError(`DIGIT ${digit} must have at least 1 bound key!`);
+        return prev;
+      }
+      return {
+        ...prev,
+        [digit]: currentKeys.filter((k) => k !== keyToRemove),
+      };
+    });
+  };
+
   const handleResetDigit = (digit: number) => {
+    setConflictError(null);
+    const defaultKey = String(digit);
+    // Check if the default digit key is currently bound to another digit
+    for (let d = 0; d <= 9; d++) {
+      if (d !== digit && (draft[d] || []).includes(defaultKey)) {
+        setConflictError(
+          `Cannot reset DIGIT ${digit} to [${defaultKey}] because DIGIT ${d} is currently using it!`
+        );
+        return;
+      }
+    }
     setDraft((prev) => ({
       ...prev,
-      [digit]: [String(digit)],
+      [digit]: [defaultKey],
     }));
   };
 
   const handleResetAll = () => {
+    setConflictError(null);
     setDraft(structuredClone(DEFAULT_KEY_BINDINGS));
     setListeningDigit(null);
   };
 
   const handleApplyPresetQwerty = () => {
+    setConflictError(null);
     setDraft({
       1: ['1', 'q'],
       2: ['2', 'w'],
@@ -100,15 +146,20 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
         <div className="modal-header">
           <h2>KEYBINDINGS CONFIGURATION</h2>
           <button type="button" className="btn-close" onClick={onClose}>
-            ✕
+            X
           </button>
         </div>
 
         <p className="modal-desc">
-          Click <strong>+ ADD KEY</strong> next to any digit and press any key on your keyboard
-          (letters, spacebar, or Numpad). Each digit can have up to 3 active keys bound
-          simultaneously!
+          Click <strong>+ ADD KEY</strong> next to any digit and press a key. Each key can only be
+          assigned to <strong>one digit at a time</strong> (duplicate keybindings are blocked).
         </p>
+
+        {conflictError && (
+          <div className="binding-error-alert" role="alert">
+            [!] {conflictError}
+          </div>
+        )}
 
         <div className="preset-bar">
           <button type="button" className="btn-arcade small" onClick={handleResetAll}>
@@ -128,8 +179,16 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
                 <div className="binding-digit">DIGIT {digit}</div>
                 <div className="binding-keys">
                   {keys.map((k) => (
-                    <span key={k} className="key-chip">
+                    <span
+                      key={k}
+                      className="key-chip"
+                      title={keys.length > 1 ? 'Click to remove this key' : 'Primary key'}
+                      onClick={() => {
+                        if (keys.length > 1) handleRemoveSingleKey(digit, k);
+                      }}
+                    >
                       {formatKeyLabel(k)}
+                      {keys.length > 1 && <b className="chip-remove">x</b>}
                     </span>
                   ))}
                 </div>
@@ -137,7 +196,10 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
                   <button
                     type="button"
                     className={`btn-bind ${isListening ? 'active' : ''}`}
-                    onClick={() => setListeningDigit(isListening ? null : digit)}
+                    onClick={() => {
+                      setConflictError(null);
+                      setListeningDigit(isListening ? null : digit);
+                    }}
                   >
                     {isListening ? 'PRESS A KEY...' : '+ ADD KEY'}
                   </button>
@@ -147,7 +209,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
                     title="Reset to default digit key"
                     onClick={() => handleResetDigit(digit)}
                   >
-                    ↺
+                    RESET
                   </button>
                 </div>
               </div>

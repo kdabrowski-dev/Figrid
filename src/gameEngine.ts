@@ -25,7 +25,7 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
   // --- SHORT SEQUENCES (3-4 digits) ---
   {
     id: 'slide_right',
-    name: 'SLIDE RIGHT →',
+    name: 'SLIDE RIGHT >>',
     subtitle: 'Smooth flow achieved!',
     tier: 'SHORT',
     digits: [1, 2, 3, 4],
@@ -35,7 +35,7 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
   },
   {
     id: 'slide_left',
-    name: '← SLIDE LEFT',
+    name: '<< SLIDE LEFT',
     subtitle: 'Reverse flow achieved!',
     tier: 'SHORT',
     digits: [9, 8, 7, 6],
@@ -127,7 +127,7 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
   },
   {
     id: 'phi_easter_egg',
-    name: 'Φ GOLDEN RATIO PHI Φ',
+    name: 'PHI // GOLDEN RATIO',
     subtitle: 'Secret Golden Proportion unlocked!',
     tier: 'PHI',
     digits: [1, 6, 1, 5, 3],
@@ -138,7 +138,7 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
   },
   {
     id: 'palindrome',
-    name: 'MIRROR PALINDROME ↔',
+    name: 'MIRROR PALINDROME <>',
     subtitle: 'There and back again!',
     tier: 'MEDIUM',
     digits: [1, 2, 3, 3, 2, 1],

@@ -49,6 +49,10 @@ export const App: React.FC = () => {
   const deltaPopupRootRef = useRef<HTMLDivElement | null>(null);
   const progressNodeRef = useRef<HTMLSpanElement | null>(null);
   const boardWrapperRef = useRef<HTMLDivElement | null>(null);
+  const badgeFadeTimeoutRef = useRef<number | null>(null);
+
+  // Set of currently held physical key codes (prevents holding a key down without releasing it via keyup)
+  const pressedPhysicalKeysRef = useRef<Set<string>>(new Set());
 
   // Real-time mutable game engine state (0ms input lag)
   const engineRef = useRef({
@@ -104,7 +108,7 @@ export const App: React.FC = () => {
     []
   );
 
-  // Floating +pts / -pts popup in dynamic spectrum color
+  // Floating +pts / -pts popup in dynamic spectrum color + smooth fade-out at the end
   const triggerDeltaPopup = useCallback(
     (deltaPoints: number, spectrumColor: string, extraTag?: string) => {
       const isPositive = deltaPoints >= 0;
@@ -117,7 +121,15 @@ export const App: React.FC = () => {
         badge.style.color = isPositive ? spectrumColor : '#ff2a54';
         badge.style.borderColor = isPositive ? spectrumColor : '#ff2a54';
         badge.style.boxShadow = `0 0 10px ${isPositive ? spectrumColor : 'rgba(255,42,84,0.5)'}`;
+        badge.classList.remove('fading-out');
         badge.classList.add('visible');
+
+        if (badgeFadeTimeoutRef.current !== null) {
+          window.clearTimeout(badgeFadeTimeoutRef.current);
+        }
+        badgeFadeTimeoutRef.current = window.setTimeout(() => {
+          badge.classList.add('fading-out');
+        }, 1250);
       }
 
       const root = deltaPopupRootRef.current;
@@ -143,7 +155,7 @@ export const App: React.FC = () => {
     []
   );
 
-  // 8-bit banner popup when a hidden sequence is typed fast enough
+  // 8-bit banner popup when a hidden sequence or shield combo is triggered (with smooth fade-out at the end)
   const triggerSequenceBanner = useCallback(
     (title: string, subtitle: string, bonusPoints: number, color: string, isPhi?: boolean) => {
       const id = engineRef.current.bannerCounter++;
@@ -165,9 +177,10 @@ export const App: React.FC = () => {
         boardWrapperRef.current.classList.add('phi-golden-flash');
       }
 
+      const durationMs = isPhi ? 2600 : 1950;
       setTimeout(() => {
         setActiveBanners((prev) => prev.filter((b) => b.id !== id));
-      }, isPhi ? 2600 : 1950);
+      }, durationMs);
     },
     []
   );
@@ -176,6 +189,7 @@ export const App: React.FC = () => {
   const startNewGame = useCallback(() => {
     const newBoard = generateFairBoard();
     setBoard(newBoard);
+    pressedPhysicalKeysRef.current.clear();
 
     const eng = engineRef.current;
     eng.currentIndex = 0;
@@ -207,17 +221,14 @@ export const App: React.FC = () => {
       scoreNodeRef.current.style.color = '#ffea00';
     }
     if (lastDeltaBadgeRef.current) {
-      lastDeltaBadgeRef.current.classList.remove('visible');
+      lastDeltaBadgeRef.current.classList.remove('visible', 'fading-out');
     }
     if (progressNodeRef.current) {
       progressNodeRef.current.textContent = `0 / ${TOTAL_CELLS}`;
     }
   }, []);
 
-  // Initialize DOM nodes when a new board is created:
-  // - NO tile backgrounds on unpressed digits,
-  // - NO sequence highlights on the board,
-  // - Reinforced shields only visible within the 7-step lookahead window!
+  // Initialize DOM nodes when a new board is created
   useEffect(() => {
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const node = cellNodesRef.current[i];
@@ -248,15 +259,29 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Zero-Lag Global Keydown Engine
+  // Zero-Lag Global Keydown + Keyup Engine (blocks physical key hold / repeat without release)
   useEffect(() => {
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const physCode = e.code || e.key.toLowerCase();
+      pressedPhysicalKeysRef.current.delete(physCode);
+    };
+
+    const handleWindowBlur = () => {
+      pressedPhysicalKeysRef.current.clear();
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isBindingsOpen) return;
 
-      if (e.repeat) {
+      const physCode = e.code || e.key.toLowerCase();
+
+      // Block OS auto-repeat AND block triggering if the physical key has not been released yet
+      if (e.repeat || pressedPhysicalKeysRef.current.has(physCode)) {
         e.preventDefault();
         return;
       }
+
+      pressedPhysicalKeysRef.current.add(physCode);
 
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -312,11 +337,11 @@ export const App: React.FC = () => {
 
           if (currentNode) {
             currentNode.classList.remove('shield-approaching', 'error');
-            currentNode.style.setProperty('--shield-alpha', '0');
+            currentNode.style.setProperty('--shield-alpha', '1');
             currentNode.classList.add('shield-cracked');
           }
 
-          triggerDeltaPopup(shieldBreakPoints, specColor, '🛡 CRACKED!');
+          triggerDeltaPopup(shieldBreakPoints, specColor, '[CRACKED!]');
           return;
         }
 
@@ -395,11 +420,11 @@ export const App: React.FC = () => {
 
         let tag = '';
         if (isSecondShieldHit && completedSequenceName) {
-          tag = `⚡2X + ${completedSequenceName}`;
+          tag = `[2X + ${completedSequenceName}]`;
         } else if (isSecondShieldHit) {
-          tag = '⚡SHIELD 2X!';
+          tag = '[SHIELD 2X!]';
         } else if (completedSequenceName) {
-          tag = `★ ${completedSequenceName}`;
+          tag = `[${completedSequenceName}]`;
         }
 
         triggerDeltaPopup(pointsGained, specColor, tag || undefined);
@@ -425,7 +450,7 @@ export const App: React.FC = () => {
           if (nextNode) {
             nextNode.classList.add('active');
           }
-          // Update 7-step lookahead alpha for upcoming Reinforced shields
+          // Smoothly fade in upcoming Reinforced shields within the 7-step lookahead window
           updateLookaheadShieldVisibility(nextIndex, board);
         } else {
           eng.isFinished = true;
@@ -469,7 +494,13 @@ export const App: React.FC = () => {
     };
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
   }, [
     board,
     isBindingsOpen,
@@ -489,7 +520,7 @@ export const App: React.FC = () => {
       {/* TOP HUD WITH CENTERED SCORE COUNTER */}
       <header className="top-hud">
         <div className="hud-side hud-left">
-          <div className="brand-title">FIGRID // 21×13</div>
+          <div className="brand-title">FIGRID // 21x13</div>
           <div className="progress-box">
             <span className="hud-label">PROGRESS</span>
             <span ref={progressNodeRef} className="hud-progress-val">
@@ -530,7 +561,7 @@ export const App: React.FC = () => {
               setIsBindingsOpen(true);
             }}
           >
-            ⌨ KEYBINDINGS
+            KEYBINDINGS
           </button>
           <button
             type="button"
@@ -540,12 +571,12 @@ export const App: React.FC = () => {
               startNewGame();
             }}
           >
-            ↻ RESTART [ESC]
+            RESTART [ESC]
           </button>
         </div>
       </header>
 
-      {/* 8-BIT BANNER OVERLAY WHEN HIDDEN SEQUENCES ARE TRIGGERED */}
+      {/* 8-BIT BANNER OVERLAY WHEN HIDDEN SEQUENCES ARE TRIGGERED (WITH SMOOTH FADE-OUT) */}
       <div className="sequence-banners-overlay">
         {activeBanners.map((b) => (
           <div
@@ -576,8 +607,19 @@ export const App: React.FC = () => {
                 }}
                 className="cell"
               >
+                {cell.isReinforced && (
+                  <svg
+                    className="cell-shield-svg"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      className="shield-outline-path"
+                      d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                    />
+                  </svg>
+                )}
                 <span className="cell-digit">{cell.digit}</span>
-                {cell.isReinforced && <span className="cell-shield-layer" />}
               </div>
             ))}
           </div>
@@ -590,8 +632,8 @@ export const App: React.FC = () => {
                   FINAL SCORE: <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
                 </p>
                 <p className="victory-stats">
-                  Avg Pace: {avgSpeedMs ?? '--'} ms/key • Secret Sequences:{' '}
-                  {sequencesHitCount}/{board.sequences.length} • 2x Shields:{' '}
+                  Avg Pace: {avgSpeedMs ?? '--'} ms/key | Secret Sequences:{' '}
+                  {sequencesHitCount}/{board.sequences.length} | 2x Shields:{' '}
                   {reinforcedHitCount}/{board.totalReinforcedCount}
                 </p>
                 <button type="button" className="btn-arcade gold" onClick={startNewGame}>
