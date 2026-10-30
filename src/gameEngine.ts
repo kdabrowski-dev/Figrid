@@ -435,6 +435,81 @@ const OMNI_DIRECTIONS: [number, number][] = [
   [-1, -1], // NW (Up-Left)
 ];
 
+export interface WrapGhostProjection {
+  key: string;
+  ghostRow: number; // e.g. -1 or 21 when wrapping vertically, or 0..20
+  ghostCol: number; // e.g. -1 or 13 when wrapping horizontally, or 0..12
+  targetIndex: number; // Real cell index on the 21x13 board
+  digit: number;
+  isReinforced: boolean;
+}
+
+/**
+ * Computes which directional moves from `fromIndex` cross the outer border of the 21x13 board
+ * and returns their Ghost/Blurry projections positioned in the 1-cell border padding around the grid!
+ * For example, at top-left (row 0, col 0):
+ * - Left (0, -1)       -> ghost at (row 0, col -1) showing real cell (0, 12)
+ * - Up-Left (-1, -1)   -> ghost at (row -1, col -1) showing real cell (20, 12)
+ * - Up (-1, 0)         -> ghost at (row -1, col 0) showing real cell (20, 0)
+ * - Up-Right (-1, +1)  -> ghost at (row -1, col 1) showing real cell (20, 1)
+ * - Down-Left (+1, -1) -> ghost at (row 1, col -1) showing real cell (1, 12)
+ */
+export function getWrapGhostProjectionsForHeads(
+  headIndices: number[],
+  board: GeneratedBoard,
+  doneMask: Uint8Array,
+  branchVisitedByHead: Map<number, ReadonlySet<number>>
+): WrapGhostProjection[] {
+  const ghostsByKey = new Map<string, WrapGhostProjection>();
+  const maxRaySteps = Math.max(ROWS, COLS);
+
+  for (const fromIndex of headIndices) {
+    const startR = Math.floor(fromIndex / COLS);
+    const startC = fromIndex % COLS;
+    const branchVisited = branchVisitedByHead.get(fromIndex);
+
+    const isOccupied = (idx: number) =>
+      doneMask[idx] === 1 || (branchVisited !== undefined && branchVisited.has(idx));
+
+    for (let d = 0; d < OMNI_DIRECTIONS.length; d++) {
+      const [dr, dc] = OMNI_DIRECTIONS[d];
+      const adjR = startR + dr;
+      const adjC = startC + dc;
+
+      // Does stepping in direction (dr, dc) from this head cross outside the 21x13 board boundary?
+      const crossesBoundary = adjR < 0 || adjR >= ROWS || adjC < 0 || adjC >= COLS;
+      if (!crossesBoundary) continue;
+
+      // Find the first unvisited target cell along this ray (wrapping around the torus)
+      for (let step = 1; step <= maxRaySteps; step++) {
+        const nr = (((startR + dr * step) % ROWS) + ROWS) % ROWS;
+        const nc = (((startC + dc * step) % COLS) + COLS) % COLS;
+        const candidateIdx = nr * COLS + nc;
+        if (candidateIdx === fromIndex) break;
+
+        if (!isOccupied(candidateIdx)) {
+          // Place the blurry ghost tile right outside the edge next to the head: (adjR, adjC)
+          const key = `${adjR}_${adjC}`;
+          if (!ghostsByKey.has(key)) {
+            const targetCell = board.cells[candidateIdx];
+            ghostsByKey.set(key, {
+              key,
+              ghostRow: adjR,
+              ghostCol: adjC,
+              targetIndex: candidateIdx,
+              digit: targetCell.digit,
+              isReinforced: targetCell.isReinforced,
+            });
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  return Array.from(ghostsByKey.values());
+}
+
 /**
  * Returns the available next cell indices around `fromIndex` in 8 directions
  * with full Torus Edge Wrap-Around AND Idea A Phase-Jump raycasting through

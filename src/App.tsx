@@ -8,6 +8,8 @@ import {
   getShieldProximityAlpha,
   getOmni2DShieldAlpha,
   getAvailableOmniNeighbors,
+  getWrapGhostProjectionsForHeads,
+  WrapGhostProjection,
   countImmediateFreeNeighbors,
   detectOmniSequenceMatch,
   getSpectrumColor,
@@ -62,6 +64,7 @@ export const App: React.FC = () => {
   const [reinforcedHitCount, setReinforcedHitCount] = useState<number>(0);
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [activeBanners, setActiveBanners] = useState<BannerPopup[]>([]);
+  const [wrapGhosts, setWrapGhosts] = useState<WrapGhostProjection[]>([]);
 
   // Direct DOM references for O(1) zero-reflow updates across the 273 cells
   const cellNodesRef = useRef<(HTMLDivElement | null)[]>(new Array(TOTAL_CELLS).fill(null));
@@ -169,11 +172,13 @@ export const App: React.FC = () => {
     const branches = eng.omniBranches;
     const isAmbiguous = branches.length > 1;
     const headIndices: number[] = [];
+    const visitedByHead = new Map<number, ReadonlySet<number>>();
 
     // 2. Highlight active head(s), uncommitted branch trails, and available next neighbors
     for (let b = 0; b < branches.length; b++) {
       const br = branches[b];
       headIndices.push(br.headIndex);
+      visitedByHead.set(br.headIndex, br.visitedSet);
 
       // Trail cells (excluding head)
       for (let t = 0; t < br.trail.length - 1; t++) {
@@ -211,6 +216,14 @@ export const App: React.FC = () => {
         }
       }
     }
+
+    // 2b. Compute blurry wrap-around ghost tiles in the outer border padding around active heads
+    const readyHeads = branches
+      .filter((br) => !(currentBoard.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead))
+      .map((br) => br.headIndex);
+    setWrapGhosts(
+      getWrapGhostProjectionsForHeads(readyHeads, currentBoard, eng.doneMask, visitedByHead)
+    );
 
     // 3. Update 2D Planar Reinforced Shield proximity alpha across all unvisited reinforced cells
     for (let i = 0; i < TOTAL_CELLS; i++) {
@@ -383,13 +396,9 @@ export const App: React.FC = () => {
       eng.shieldIntactOnCurrent = board.cells[0].isReinforced;
       const firstNode = cellNodesRef.current[0];
       if (firstNode) firstNode.classList.add('active');
+      setWrapGhosts([]);
       updateLinearShieldVisibility(0, board);
     } else {
-      // OMNI-8 Mode starts at center of the 21x13 board (row 10, col 6 -> index 136)
-      // We mark the starting anchor cell as the active head; the player's first keystroke
-      // will either clear index 136 or step to any surrounding neighbor!
-      // Even better: in OMNI mode, index 0 (top-left, so wrap-around in all 4 corners is immediately testable!)
-      // awaits its own digit first OR let's start at index 0 as the initial head!
       const startIdx = 0;
       eng.doneMask[startIdx] = 1;
       eng.clearedCount = 1;
@@ -1078,32 +1087,63 @@ export const App: React.FC = () => {
       {/* MAIN WORKSPACE: 21x13 BOARD ON THE LEFT + LIVE SPEED CHART ON THE RIGHT */}
       <main className="main-workspace">
         <section ref={boardWrapperRef} className="board-section">
-          <div className="board-grid-21x13">
-            {board.cells.map((cell, idx) => (
-              <div
-                key={idx}
-                ref={(el) => {
-                  cellNodesRef.current[idx] = el;
-                }}
-                className="cell"
-              >
-                {cell.isReinforced && (
-                  <svg
-                    className="cell-shield-svg"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      className="shield-outline-path"
-                      d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                    />
-                  </svg>
-                )}
-                <span className="cell-digit">
-                  <FuturisticDigit digit={cell.digit} />
-                </span>
-              </div>
-            ))}
+          <div className="board-grid-stage">
+            {/* BLURRY WRAP-AROUND GHOST TILES IN THE OUTER PADDING RING (OMNI-8 MODE) */}
+            {gameMode === 'OMNI' &&
+              wrapGhosts.map((g) => (
+                <div
+                  key={g.key}
+                  className="cell omni-wrap-ghost"
+                  style={{
+                    left: `${g.ghostCol * 38}px`,
+                    top: `${g.ghostRow * 32}px`,
+                  }}
+                >
+                  {g.isReinforced && (
+                    <svg
+                      className="cell-shield-svg ghost-shield"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        className="shield-outline-path"
+                        d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                      />
+                    </svg>
+                  )}
+                  <span className="cell-digit">
+                    <FuturisticDigit digit={g.digit} />
+                  </span>
+                </div>
+              ))}
+
+            <div className="board-grid-21x13">
+              {board.cells.map((cell, idx) => (
+                <div
+                  key={idx}
+                  ref={(el) => {
+                    cellNodesRef.current[idx] = el;
+                  }}
+                  className="cell"
+                >
+                  {cell.isReinforced && (
+                    <svg
+                      className="cell-shield-svg"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        className="shield-outline-path"
+                        d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                      />
+                    </svg>
+                  )}
+                  <span className="cell-digit">
+                    <FuturisticDigit digit={cell.digit} />
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
 
           {isFinished && (

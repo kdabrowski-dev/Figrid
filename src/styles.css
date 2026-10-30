@@ -2,8 +2,8 @@
   --bg-dark: #090b10;
   --panel-bg: #111521;
   --panel-border: #252d44;
-  /* High-contrast, clearly readable color for unpressed digits on plain background */
-  --text-unpressed: #cbd5e1;
+  /* Softer, calmer slate tone for unpressed digits (not overly bright) */
+  --text-unpressed: #7c8da6;
   --text-done: #00e5a3;
   --accent-cyan: #00f0ff;
   --accent-yellow: #ffea00;
@@ -279,8 +279,43 @@ body {
   background: var(--panel-bg);
   border: 2px solid var(--panel-border);
   box-shadow: 0 8px 0 #040508;
-  padding: 12px;
+  /* Generous outer frame padding so blurry wrap-around ghost tiles fit comfortably on all 4 sides */
+  padding: 44px 48px;
   transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.board-grid-stage {
+  position: relative;
+}
+
+/* Blurry Wrap-Around Ghost Tiles rendered in the outer frame padding around active edge heads */
+.cell.omni-wrap-ghost {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+  background-color: rgba(0, 240, 255, 0.08);
+  border: 1px dashed rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.22);
+  color: #93c5fd;
+  opacity: 0.72;
+  filter: blur(0.45px);
+  animation: wrapGhostFadeIn 0.2s ease-out;
+}
+
+.cell.omni-wrap-ghost .cell-shield-svg.ghost-shield {
+  opacity: 0.78;
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
+@keyframes wrapGhostFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
 }
 
 /* Special Golden Ratio Phi Easter Egg board glow */
@@ -336,15 +371,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 13px;
-  height: 17px;
+  width: 11px;
+  height: 14px;
   transition: color 0.24s cubic-bezier(0.22, 1, 0.36, 1), filter 0.24s ease;
 }
 
-/* Custom Futuristic 8-Bit Cyber-Voxel Digit Glyphs (SVG - Single pure color, zero artifacts) */
+/* Custom Futuristic 8-Bit Cyber-Voxel Digit Glyphs (SVG - Slimmer, slightly smaller, pure monochrome) */
 .futuristic-digit-svg {
-  width: 13px;
-  height: 17px;
+  width: 11px;
+  height: 14px;
   display: block;
   overflow: visible;
   shape-rendering: geometricPrecision;
