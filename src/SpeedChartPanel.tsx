@@ -12,7 +12,7 @@ export interface SpeedSample {
 
 interface SpeedChartPanelProps {
   samplesRef: React.MutableRefObject<SpeedSample[]>;
-  renderTick: number; // Używane lub odświeżane zewnętrznie / przez imperatywny uchwyt
+  renderTick: number;
   lastSpeedMs: number | null;
   avgSpeedMs: number | null;
   peakKps: number;
@@ -53,11 +53,11 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    // Tło wykresu
+    // Chart background
     ctx.fillStyle = '#0b0d14';
     ctx.fillRect(0, 0, width, height);
 
-    // Siatka pomocnicza 8-bit
+    // 8-bit helper grid
     const padLeft = 36;
     const padRight = 12;
     const padTop = 16;
@@ -65,7 +65,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
     const plotW = width - padLeft - padRight;
     const plotH = height - padTop - padBottom;
 
-    const maxKps = 16; // 16 klawiszy/sek (~62ms) jako sufit wykresu
+    const maxKps = 16; // 16 keys/sec (~62ms) ceiling
     const gridLevels = [4, 8, 12, 16];
 
     ctx.strokeStyle = '#1b2030';
@@ -84,7 +84,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
       ctx.fillText(`${lvl}/s`, 4, y + 3);
     }
 
-    // Oś dolna
+    // Bottom axis
     ctx.strokeStyle = '#2b334d';
     ctx.beginPath();
     ctx.moveTo(padLeft, padTop + plotH);
@@ -92,19 +92,18 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
     ctx.stroke();
 
     const allSamples = samplesRef.current;
-    const visibleCount = 45; // Ostatnie 45 wciśnięć dla czytelności w czasie rzeczywistym
+    const visibleCount = 45;
     const samples = allSamples.slice(-visibleCount);
 
     if (samples.length === 0) {
       ctx.fillStyle = '#4a5568';
       ctx.font = '9px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('OCZEKIWANIE NA RUCH...', padLeft + plotW / 2, padTop + plotH / 2);
+      ctx.fillText('WAITING FOR INPUT...', padLeft + plotW / 2, padTop + plotH / 2);
       ctx.restore();
       return;
     }
 
-    // Rysowanie wypełnienia pod wykresem
     const stepX = plotW / Math.max(1, visibleCount - 1);
 
     ctx.beginPath();
@@ -128,7 +127,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
     ctx.fillStyle = areaGrad;
     ctx.fill();
 
-    // Rysowanie segmentów linii w kolorach spektrum prędkości
+    // Line segments colored by speed spectrum
     ctx.lineWidth = 2.5;
     for (let i = 0; i < samples.length - 1; i++) {
       const s1 = samples[i];
@@ -146,21 +145,19 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
       ctx.stroke();
     }
 
-    // Punkty na wykresie (wyróżnienie tarcz x2 oraz ukończonych sekwencji)
+    // Data points (highlighting 2x Shields and discovered Sequences)
     samples.forEach((s, i) => {
       const x = padLeft + i * stepX;
       const y = padTop + plotH - (Math.min(maxKps, s.kps) / maxKps) * plotH;
       const intensity = Math.max(0, Math.min(1, (s.kps - 2) / 12));
 
       if (s.sequenceName) {
-        // Gwiazdka / diament dla sekwencji
         ctx.fillStyle = '#ffea00';
         ctx.fillRect(x - 4, y - 4, 8, 8);
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1;
         ctx.strokeRect(x - 4, y - 4, 8, 8);
       } else if (s.isReinforced2x) {
-        // Punkt tarczy x2
         ctx.fillStyle = '#00f0ff';
         ctx.fillRect(x - 3, y - 3, 6, 6);
       } else {
@@ -169,7 +166,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
       }
     });
 
-    // Podpis osi X (numery kroków)
+    // X-axis step labels
     ctx.fillStyle = '#6c7693';
     ctx.font = '8px "JetBrains Mono", monospace';
     ctx.textAlign = 'right';
@@ -188,8 +185,8 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
     <aside className="side-panel">
       <div className="panel-card">
         <div className="panel-header">
-          <span className="panel-title">WYKRES PRĘDKOŚCI (NA ŻYWO)</span>
-          <span className="panel-badge">{currentKps} ZN/S</span>
+          <span className="panel-title">LIVE SPEED TELEMETRY</span>
+          <span className="panel-badge">{currentKps} KEYS/S</span>
         </div>
 
         <div className="chart-wrapper">
@@ -198,69 +195,41 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
 
         <div className="chart-legend">
           <span className="legend-item">
-            <i className="dot dot-seq" /> Bonus Sekwencji
+            <i className="dot dot-seq" /> Hidden Sequence Bonus
           </span>
           <span className="legend-item">
-            <i className="dot dot-shield" /> Tarcza 2x
+            <i className="dot dot-shield" /> Reinforced 2x Hit
           </span>
         </div>
 
         <div className="telemetry-grid">
           <div className="telemetry-item">
-            <span className="telemetry-label">OSTATNI CZAS</span>
+            <span className="telemetry-label">LAST DELTA</span>
             <span className="telemetry-val">
               {lastSpeedMs !== null ? `${lastSpeedMs} ms` : '-- ms'}
             </span>
           </div>
           <div className="telemetry-item">
-            <span className="telemetry-label">ŚREDNIE TEMPO</span>
+            <span className="telemetry-label">AVERAGE PACE</span>
             <span className="telemetry-val">
               {avgSpeedMs !== null ? `${avgSpeedMs} ms (${avgKps}/s)` : '-- ms'}
             </span>
           </div>
           <div className="telemetry-item">
-            <span className="telemetry-label">SZCZYTOWE TEMPO</span>
-            <span className="telemetry-val highlight-magenta">{peakKps.toFixed(1)} zn/s</span>
+            <span className="telemetry-label">PEAK SPEED</span>
+            <span className="telemetry-val highlight-magenta">{peakKps.toFixed(1)} keys/s</span>
           </div>
           <div className="telemetry-item">
-            <span className="telemetry-label">TARCZE (BONUS X2)</span>
+            <span className="telemetry-label">SHIELDS (2X BONUS)</span>
             <span className="telemetry-val highlight-cyan">
               {reinforcedHitCount} / {totalReinforcedCount}
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Karta informacyjna o uczciwym budżecie planszy i sekwencjach */}
-      <div className="panel-card sequences-card">
-        <div className="panel-header">
-          <span className="panel-title">SEKWENCJE NA PLANSZY</span>
-          <span className="panel-badge gold">
-            {sequencesHitCount}/{totalSequencesCount} ZALICZONYCH
-          </span>
-        </div>
-        <p className="fair-play-note">
-          ⚖️ <strong>BALANS FAIR-PLAY:</strong> Każda plansza 21×13 losuje dokładnie ten sam budżet
-          wagowy ({totalSequencesCount} sekwencji = 4050 pkt w puli + {totalReinforcedCount} tarcz{' '}
-          <span className="shield-inline">🛡</span> z mnożnikiem <strong>x2</strong> za szybki
-          dwuklik).
-        </p>
-        <div className="seq-tiers-mini">
-          <div className="seq-tier-row">
-            <span className="tier-tag short">KRÓTKIE ×5</span>
-            <span className="tier-codes">1234, 9876, 1010, 1337, 2580, 0000</span>
-          </div>
-          <div className="seq-tier-row">
-            <span className="tier-tag medium">ŚREDNIE ×4</span>
-            <span className="tier-codes">12345, 67890, 13579, 24680, 123321, 123123, 159753</span>
-          </div>
-          <div className="seq-tier-row">
-            <span className="tier-tag phi">LICZBA FI ×1</span>
-            <span className="tier-codes">16153 (Złoty Easter Egg Φ +550 pkt)</span>
-          </div>
-          <div className="seq-tier-row">
-            <span className="tier-tag long">JACKPOT ×1</span>
-            <span className="tier-codes">1122334455, 1234432100 (+900 pkt)</span>
+          <div className="telemetry-item full-span">
+            <span className="telemetry-label">SECRET SEQUENCES TRIGGERED</span>
+            <span className="telemetry-val highlight-gold">
+              {sequencesHitCount} / {totalSequencesCount} DISCOVERED
+            </span>
           </div>
         </div>
       </div>

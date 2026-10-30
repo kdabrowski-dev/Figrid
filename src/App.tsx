@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   TOTAL_CELLS,
+  SHIELD_REVEAL_DISTANCE,
   GeneratedBoard,
   generateFairBoard,
+  getShieldProximityAlpha,
   getSpectrumColor,
   computePointIntensity,
   KeyBindingsMap,
@@ -26,12 +28,11 @@ interface BannerPopup {
 }
 
 export const App: React.FC = () => {
-  // Stan planszy (generowany tylko przy starcie lub resecie gry)
   const [board, setBoard] = useState<GeneratedBoard>(() => generateFairBoard());
   const [bindings, setBindings] = useState<KeyBindingsMap>(() => loadKeyBindings());
   const [isBindingsOpen, setIsBindingsOpen] = useState(false);
 
-  // Stan telemetrii dla prawego panelu i podsumowania
+  // Telemetry state for right panel and summary
   const [chartTick, setChartTick] = useState(0);
   const [lastSpeedMs, setLastSpeedMs] = useState<number | null>(null);
   const [avgSpeedMs, setAvgSpeedMs] = useState<number | null>(null);
@@ -41,7 +42,7 @@ export const App: React.FC = () => {
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [activeBanners, setActiveBanners] = useState<BannerPopup[]>([]);
 
-  // Referencje DOM dla O(1) aktualizacji bez re-renderowania siatki 273 komórek
+  // Direct DOM references for O(1) zero-reflow updates across the 273 cells
   const cellNodesRef = useRef<(HTMLDivElement | null)[]>(new Array(TOTAL_CELLS).fill(null));
   const scoreNodeRef = useRef<HTMLSpanElement | null>(null);
   const lastDeltaBadgeRef = useRef<HTMLSpanElement | null>(null);
@@ -49,15 +50,13 @@ export const App: React.FC = () => {
   const progressNodeRef = useRef<HTMLSpanElement | null>(null);
   const boardWrapperRef = useRef<HTMLDivElement | null>(null);
 
-  // Silnik stanu czasu rzeczywistego (mutowalny ref dla 0ms input lagu)
+  // Real-time mutable game engine state (0ms input lag)
   const engineRef = useRef({
     currentIndex: 0,
     lastKeystrokeTime: 0,
     score: 0,
     displayedScore: 0,
-    // Czy aktualna komórka z tarczą ma jeszcze aktywną tarczę (wymaga 1. uderzenia, by ją rozbić)
     shieldIntactOnCurrent: false,
-    // Czasy wciśnięć każdego indeksu (do weryfikacji średniej prędkości sekwencji)
     cellHitTimestamps: new Float64Array(TOTAL_CELLS),
     cellFirstHitTimestamps: new Float64Array(TOTAL_CELLS),
     totalKeystrokes: 0,
@@ -71,7 +70,7 @@ export const App: React.FC = () => {
 
   const samplesRef = useRef<SpeedSample[]>([]);
 
-  // Odwrotna mapa klawisz -> cyfra dla błyskawicznego O(1) sprawdzania w keydown
+  // Reverse key -> digit lookup map for O(1) keydown checks
   const keyToDigitMapRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     const map = new Map<string, number>();
@@ -84,14 +83,34 @@ export const App: React.FC = () => {
     keyToDigitMapRef.current = map;
   }, [bindings]);
 
-  // Funkcja wyzwalająca pływający wskaźnik punktów (+... / -...) w kolorze spektrum
+  /**
+   * Updates the proximity alpha factor for Reinforced cells within the 7-step lookahead window.
+   * Cells beyond currentIndex + 7 have --shield-alpha = 0 (completely invisible).
+   * As the player gets closer (distance 7 down to 1), --shield-alpha smoothly increases up to 1.
+   */
+  const updateLookaheadShieldVisibility = useCallback(
+    (newCurrentIndex: number, currentBoard: GeneratedBoard) => {
+      const maxIdx = Math.min(TOTAL_CELLS - 1, newCurrentIndex + SHIELD_REVEAL_DISTANCE);
+      for (let i = newCurrentIndex; i <= maxIdx; i++) {
+        const cell = currentBoard.cells[i];
+        if (!cell.isReinforced) continue;
+        const node = cellNodesRef.current[i];
+        if (!node) continue;
+        const alpha = getShieldProximityAlpha(i, newCurrentIndex);
+        node.style.setProperty('--shield-alpha', String(alpha));
+        node.classList.add('shield-approaching');
+      }
+    },
+    []
+  );
+
+  // Floating +pts / -pts popup in dynamic spectrum color
   const triggerDeltaPopup = useCallback(
     (deltaPoints: number, spectrumColor: string, extraTag?: string) => {
       const isPositive = deltaPoints >= 0;
       const formatted = isPositive ? `+${deltaPoints}` : `${deltaPoints}`;
       const fullText = extraTag ? `${formatted} ${extraTag}` : formatted;
 
-      // 1. Stały badge nad/obok wyniku
       const badge = lastDeltaBadgeRef.current;
       if (badge) {
         badge.textContent = fullText;
@@ -101,7 +120,6 @@ export const App: React.FC = () => {
         badge.classList.add('visible');
       }
 
-      // 2. Pływająca cyfra nad głównym licznikiem
       const root = deltaPopupRootRef.current;
       if (root) {
         const popup = document.createElement('span');
@@ -109,7 +127,6 @@ export const App: React.FC = () => {
         popup.textContent = fullText;
         popup.style.color = isPositive ? spectrumColor : '#ff2a54';
         popup.style.textShadow = `0 0 10px ${isPositive ? spectrumColor : '#ff2a54'}`;
-        // Lekki losowy rozrzut poziomy dla czytelności przy ultraszybkim pisaniu
         const jitterX = Math.round((Math.random() - 0.5) * 34);
         popup.style.setProperty('--jitter-x', `${jitterX}px`);
 
@@ -126,7 +143,7 @@ export const App: React.FC = () => {
     []
   );
 
-  // Wyzwolenie kolorowego baneru 8-bit po zaliczeniu sekwencji poniżej progu czasu
+  // 8-bit banner popup when a hidden sequence is typed fast enough
   const triggerSequenceBanner = useCallback(
     (title: string, subtitle: string, bonusPoints: number, color: string, isPhi?: boolean) => {
       const id = engineRef.current.bannerCounter++;
@@ -136,13 +153,12 @@ export const App: React.FC = () => {
           id,
           title,
           subtitle,
-          bonusText: `+${bonusPoints} PKT BONUS!`,
+          bonusText: `+${bonusPoints} PTS BONUS!`,
           color,
           isPhi,
         },
       ]);
 
-      // Jeśli to Złota Liczba Fi (16153) - subtelny złoty rozbłysk ramki planszy
       if (isPhi && boardWrapperRef.current) {
         boardWrapperRef.current.classList.remove('phi-golden-flash');
         void boardWrapperRef.current.offsetWidth;
@@ -156,7 +172,7 @@ export const App: React.FC = () => {
     []
   );
 
-  // Reset / Nowa Gra (nowy losowy rozkład z tym samym uczciwym budżetem wagowym)
+  // Start / Restart Game
   const startNewGame = useCallback(() => {
     const newBoard = generateFairBoard();
     setBoard(newBoard);
@@ -198,27 +214,22 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Po wyrenderowaniu nowej planszy ustawiamy klasy początkowe na węzłach DOM
+  // Initialize DOM nodes when a new board is created:
+  // - NO tile backgrounds on unpressed digits,
+  // - NO sequence highlights on the board,
+  // - Reinforced shields only visible within the 7-step lookahead window!
   useEffect(() => {
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const node = cellNodesRef.current[i];
       if (!node) continue;
-      const cell = board.cells[i];
-      node.className = [
-        'cell',
-        cell.sequenceTier ? `seq-${cell.sequenceTier.toLowerCase()}` : '',
-        cell.isSequenceStart ? 'seq-start' : '',
-        cell.isSequenceEnd ? 'seq-end' : '',
-        cell.isReinforced ? 'has-shield' : '',
-        i === 0 ? 'active' : '',
-      ]
-        .filter(Boolean)
-        .join(' ');
+      node.className = i === 0 ? 'cell active' : 'cell';
+      node.style.setProperty('--shield-alpha', '0');
     }
     engineRef.current.shieldIntactOnCurrent = board.cells[0].isReinforced;
-  }, [board]);
+    updateLookaheadShieldVisibility(0, board);
+  }, [board, updateLookaheadShieldVisibility]);
 
-  // Pętla requestAnimationFrame do płynnego nabijania głównego licznika punktów
+  // Smooth arcade score counter interpolation loop
   useEffect(() => {
     let rafId: number;
     const loop = () => {
@@ -228,7 +239,7 @@ export const App: React.FC = () => {
         const step = Math.sign(diff) * Math.max(1, Math.ceil(Math.abs(diff) * 0.22));
         eng.displayedScore += step;
         if (scoreNodeRef.current) {
-          scoreNodeRef.current.textContent = eng.displayedScore.toLocaleString('pl-PL');
+          scoreNodeRef.current.textContent = eng.displayedScore.toLocaleString('en-US');
         }
       }
       rafId = requestAnimationFrame(loop);
@@ -237,7 +248,7 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Główny listener klawiatury (Zero Input Lag)
+  // Zero-Lag Global Keydown Engine
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isBindingsOpen) return;
@@ -256,7 +267,6 @@ export const App: React.FC = () => {
       const keyLower = e.key.toLowerCase();
       const mappedDigit = keyToDigitMapRef.current.get(keyLower);
 
-      // Blokujemy domyślne zachowania dla spacji, strzałek, slashy lub zbindowanych klawiszy
       if (
         mappedDigit !== undefined ||
         e.key === ' ' ||
@@ -277,18 +287,18 @@ export const App: React.FC = () => {
       const currentCell = board.cells[idx];
       const currentNode = cellNodesRef.current[idx];
 
-      // 1. WALIDACJA KLAWISZA
+      // 1. VALID KEYSTROKE
       if (mappedDigit === currentCell.digit) {
         const delta =
           eng.lastKeystrokeTime === 0
-            ? 240 // Pierwsze kliknięcie na planszy ma neutralną deltę bazową
+            ? 240
             : Math.max(15, now - eng.lastKeystrokeTime);
 
         const clampedDelta = Math.max(MIN_DELTA_MS, delta);
         const speedBonus =
           delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
 
-        // Czy to PIERWSZE uderzenie w tarczę (Reinforced Key)?
+        // First hit on a Reinforced cell cracks the shield
         if (currentCell.isReinforced && eng.shieldIntactOnCurrent) {
           eng.shieldIntactOnCurrent = false;
           eng.cellFirstHitTimestamps[idx] = now;
@@ -301,15 +311,16 @@ export const App: React.FC = () => {
           const specColor = getSpectrumColor(intensity);
 
           if (currentNode) {
-            currentNode.classList.remove('has-shield', 'error');
+            currentNode.classList.remove('shield-approaching', 'error');
+            currentNode.style.setProperty('--shield-alpha', '0');
             currentNode.classList.add('shield-cracked');
           }
 
-          triggerDeltaPopup(shieldBreakPoints, specColor, '🛡 PĘKŁA!');
+          triggerDeltaPopup(shieldBreakPoints, specColor, '🛡 CRACKED!');
           return;
         }
 
-        // Czy to DRUGIE uderzenie w tarczę (Reinforced Key)? -> MNOŻNIK x2!
+        // Second hit on a Reinforced cell -> 2X SPEED MULTIPLIER!
         const isSecondShieldHit = currentCell.isReinforced && !eng.shieldIntactOnCurrent;
         const multiplier = isSecondShieldHit ? 2 : 1;
         let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
@@ -319,13 +330,12 @@ export const App: React.FC = () => {
           setReinforcedHitCount(eng.reinforcedHit);
         }
 
-        // Zapisujemy czas zaliczenia komórki
         eng.cellHitTimestamps[idx] = now;
         if (!currentCell.isReinforced) {
           eng.cellFirstHitTimestamps[idx] = now;
         }
 
-        // Sprawdzamy, czy ta komórka kończy jedną z sekwencji na planszy!
+        // Check if this cell completes a hidden sequence below the speed threshold
         let completedSequenceName: string | undefined;
         if (currentCell.isSequenceEnd && currentCell.sequenceInstanceId !== null) {
           const seqInst = board.sequences.find(
@@ -338,7 +348,6 @@ export const App: React.FC = () => {
             const stepsCount = Math.max(1, seqInst.pattern.digits.length - 1);
             const avgSeqDelta = totalDurationMs / stepsCount;
 
-            // Jeżeli gracz wpisał sekwencję poniżej progu szybkości -> przyznajemy bonus sekwencji!
             if (avgSeqDelta <= seqInst.pattern.maxAvgDeltaMs) {
               const seqBonus = seqInst.pattern.bonusPoints;
               pointsGained += seqBonus;
@@ -348,13 +357,12 @@ export const App: React.FC = () => {
 
               triggerSequenceBanner(
                 seqInst.pattern.name,
-                `${seqInst.pattern.subtitle} (${Math.round(avgSeqDelta)} ms/zn)`,
+                `${seqInst.pattern.subtitle} (${Math.round(avgSeqDelta)} ms/key)`,
                 seqBonus,
                 seqInst.pattern.color,
                 seqInst.pattern.isPhiEasterEgg
               );
 
-              // Podświetlamy wszystkie komórki zaliczonej sekwencji złotym/neonowym pulsem
               for (let sIdx = seqInst.startIndex; sIdx <= seqInst.endIndex; sIdx++) {
                 const sNode = cellNodesRef.current[sIdx];
                 if (sNode) {
@@ -381,25 +389,25 @@ export const App: React.FC = () => {
         const intensity = computePointIntensity(pointsGained, clampedDelta);
         const specColor = getSpectrumColor(intensity);
 
-        // Kolorujemy również główny licznik punktów delikatnie w stronę aktualnego spektrum
         if (scoreNodeRef.current) {
           scoreNodeRef.current.style.color = specColor;
         }
 
         let tag = '';
         if (isSecondShieldHit && completedSequenceName) {
-          tag = `⚡2x + ${completedSequenceName}`;
+          tag = `⚡2X + ${completedSequenceName}`;
         } else if (isSecondShieldHit) {
-          tag = '⚡TARCZA 2x!';
+          tag = '⚡SHIELD 2X!';
         } else if (completedSequenceName) {
           tag = `★ ${completedSequenceName}`;
         }
 
         triggerDeltaPopup(pointsGained, specColor, tag || undefined);
 
-        // Aktualizacja DOM: wyłącznie poprzedni i aktualny element (O(1), zero reflow całej siatki!)
+        // O(1) DOM update on completed cell (tile appears ONLY after completion)
         if (currentNode) {
-          currentNode.classList.remove('active', 'error', 'shield-cracked');
+          currentNode.classList.remove('active', 'error', 'shield-cracked', 'shield-approaching');
+          currentNode.style.setProperty('--shield-alpha', '0');
           currentNode.classList.add('done');
         }
 
@@ -417,12 +425,13 @@ export const App: React.FC = () => {
           if (nextNode) {
             nextNode.classList.add('active');
           }
+          // Update 7-step lookahead alpha for upcoming Reinforced shields
+          updateLookaheadShieldVisibility(nextIndex, board);
         } else {
           eng.isFinished = true;
           setIsFinished(true);
         }
 
-        // Dodajemy próbkę do wykresu prędkości po prawej stronie
         const roundedDelta = Math.round(delta);
         samplesRef.current.push({
           step: nextIndex,
@@ -437,7 +446,7 @@ export const App: React.FC = () => {
         setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
         setChartTick((t) => t + 1);
       } else {
-        // 2. BŁĄD (Kara zależna od chwilowej prędkości uderzenia)
+        // 2. MISTAKE (Speed-scaled penalty)
         const delta =
           eng.lastKeystrokeTime === 0
             ? MAX_BONUS_DELTA_MS
@@ -447,7 +456,7 @@ export const App: React.FC = () => {
         const penalty = Math.round(BASE_POINTS * 2 + speedPenaltyFactor * 2.2);
 
         eng.score = Math.max(0, eng.score - penalty);
-        eng.lastKeystrokeTime = now; // Reset czasu, by zablokować bonus prędkości po błędzie
+        eng.lastKeystrokeTime = now;
 
         if (currentNode) {
           currentNode.classList.remove('error');
@@ -455,13 +464,20 @@ export const App: React.FC = () => {
           currentNode.classList.add('error');
         }
 
-        triggerDeltaPopup(-penalty, '#ff2a54', 'BŁĄD!');
+        triggerDeltaPopup(-penalty, '#ff2a54', 'MISS!');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [board, isBindingsOpen, startNewGame, triggerDeltaPopup, triggerSequenceBanner]);
+  }, [
+    board,
+    isBindingsOpen,
+    startNewGame,
+    triggerDeltaPopup,
+    triggerSequenceBanner,
+    updateLookaheadShieldVisibility,
+  ]);
 
   const handleSaveBindings = (newBindings: KeyBindingsMap) => {
     setBindings(newBindings);
@@ -470,22 +486,22 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-shell">
-      {/* GÓRNY PASEK HUD Z WYCENTROWANYM LICZNIKIEM PUNKTÓW */}
+      {/* TOP HUD WITH CENTERED SCORE COUNTER */}
       <header className="top-hud">
         <div className="hud-side hud-left">
           <div className="brand-title">FIGRID // 21×13</div>
           <div className="progress-box">
-            <span className="hud-label">POSTĘP PLANSZY</span>
+            <span className="hud-label">PROGRESS</span>
             <span ref={progressNodeRef} className="hud-progress-val">
               0 / {TOTAL_CELLS}
             </span>
           </div>
         </div>
 
-        {/* CENTRALNY LICZNIK PUNKTÓW + OSTATNIA ZMIANA NAD NIM */}
+        {/* CENTERED SCORE COUNTER + DYNAMIC SPECTRUM FLOATING DELTAS */}
         <div className="hud-center-score">
           <div className="score-change-row">
-            <span className="hud-label">WYNIK PUNKTOWY</span>
+            <span className="hud-label">SCORE</span>
             <span ref={lastDeltaBadgeRef} className="last-delta-pill">
               +0
             </span>
@@ -498,11 +514,10 @@ export const App: React.FC = () => {
             <div ref={deltaPopupRootRef} className="delta-popup-layer" />
           </div>
 
-          {/* Wizualny pasek 5-kolorowego spektrum prędkości */}
-          <div className="spectrum-bar-wrap" title="Spektrum punktacji zależne od prędkości">
-            <span className="spectrum-caption">WOLNO</span>
+          <div className="spectrum-bar-wrap" title="Speed-scaled point color spectrum">
+            <span className="spectrum-caption">SLOW</span>
             <div className="spectrum-gradient-bar" />
-            <span className="spectrum-caption">HIPER-TEMPO</span>
+            <span className="spectrum-caption">HYPER</span>
           </div>
         </div>
 
@@ -515,7 +530,7 @@ export const App: React.FC = () => {
               setIsBindingsOpen(true);
             }}
           >
-            ⌨ KLAWISZE
+            ⌨ KEYBINDINGS
           </button>
           <button
             type="button"
@@ -525,12 +540,12 @@ export const App: React.FC = () => {
               startNewGame();
             }}
           >
-            ↻ NOWA GRA [ESC]
+            ↻ RESTART [ESC]
           </button>
         </div>
       </header>
 
-      {/* WARSTWA BANERÓW 8-BIT DLA ZALICZONYCH SEKWENCJI ORAZ LICZBY FI (16153) */}
+      {/* 8-BIT BANNER OVERLAY WHEN HIDDEN SEQUENCES ARE TRIGGERED */}
       <div className="sequence-banners-overlay">
         {activeBanners.map((b) => (
           <div
@@ -549,7 +564,7 @@ export const App: React.FC = () => {
         ))}
       </div>
 
-      {/* GŁÓWNY UKŁAD: PLANSZA 21×13 PO LEWEJ + WYKRES PRĘDKOŚCI PO PRAWEJ */}
+      {/* MAIN WORKSPACE: 21×13 BOARD ON THE LEFT + LIVE SPEED CHART ON THE RIGHT */}
       <main className="main-workspace">
         <section ref={boardWrapperRef} className="board-section">
           <div className="board-grid-21x13">
@@ -562,7 +577,7 @@ export const App: React.FC = () => {
                 className="cell"
               >
                 <span className="cell-digit">{cell.digit}</span>
-                {cell.isReinforced && <span className="cell-shield-icon" title="Tarcza (2x klik = 2x punkty)" />}
+                {cell.isReinforced && <span className="cell-shield-layer" />}
               </div>
             ))}
           </div>
@@ -570,24 +585,24 @@ export const App: React.FC = () => {
           {isFinished && (
             <div className="victory-overlay">
               <div className="victory-card">
-                <h2>PLANSZA UKOŃCZONA!</h2>
+                <h2>BOARD CLEARED!</h2>
                 <p className="victory-score">
-                  WYNIK KOŃCOWY: <strong>{engineRef.current.score.toLocaleString('pl-PL')}</strong>
+                  FINAL SCORE: <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
                 </p>
                 <p className="victory-stats">
-                  Średnie tempo: {avgSpeedMs ?? '--'} ms/znak • Sekwencje:{' '}
-                  {sequencesHitCount}/{board.sequences.length} • Tarcze 2x:{' '}
+                  Avg Pace: {avgSpeedMs ?? '--'} ms/key • Secret Sequences:{' '}
+                  {sequencesHitCount}/{board.sequences.length} • 2x Shields:{' '}
                   {reinforcedHitCount}/{board.totalReinforcedCount}
                 </p>
                 <button type="button" className="btn-arcade gold" onClick={startNewGame}>
-                  ZAGRAJ PONOWNIE [ESC]
+                  PLAY AGAIN [ESC]
                 </button>
               </div>
             </div>
           )}
         </section>
 
-        {/* PRAWY PANEL Z WYKRESEM PRĘDKOŚCI NA ŻYWO */}
+        {/* RIGHT PANEL: LIVE SPEED CHART */}
         <SpeedChartPanel
           samplesRef={samplesRef}
           renderTick={chartTick}
@@ -601,7 +616,7 @@ export const App: React.FC = () => {
         />
       </main>
 
-      {/* MODAL KONFIGURACJI BINDINGÓW KLAWISZY */}
+      {/* KEYBINDINGS CONFIGURATION MODAL */}
       <KeyBindingsModal
         isOpen={isBindingsOpen}
         bindings={bindings}

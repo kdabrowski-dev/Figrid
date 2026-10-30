@@ -47,7 +47,6 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
 
       setDraft((prev) => {
         const next: KeyBindingsMap = structuredClone(prev);
-        // Dodajemy nowy klawisz do wybranej cyfry (max 3 skróty na jedną cyfrę)
         const existing = next[listeningDigit] || [];
         if (!existing.includes(rawKey)) {
           next[listeningDigit] = [...existing.slice(-2), rawKey];
@@ -76,7 +75,6 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   };
 
   const handleApplyPresetQwerty = () => {
-    // Preset dla graczy używających zarówno cyfr jak i liter pod dłońmi (np. QWER / UIOP)
     setDraft({
       1: ['1', 'q'],
       2: ['2', 'w'],
@@ -100,21 +98,21 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>KONFIGURACJA KLAWISZY (KEYBINDINGS)</h2>
+          <h2>KEYBINDINGS CONFIGURATION</h2>
           <button type="button" className="btn-close" onClick={onClose}>
             ✕
           </button>
         </div>
 
         <p className="modal-desc">
-          Kliknij <strong>+ DODAJ KLAWISZ</strong> przy wybranej cyfrze i naciśnij dowolny klawisz na
-          klawiaturze (np. litery, spację lub Numpad). Każda cyfra może mieć przypisanych kilka
-          klawiszy jednocześnie!
+          Click <strong>+ ADD KEY</strong> next to any digit and press any key on your keyboard
+          (letters, spacebar, or Numpad). Each digit can have up to 3 active keys bound
+          simultaneously!
         </p>
 
         <div className="preset-bar">
           <button type="button" className="btn-arcade small" onClick={handleResetAll}>
-            DOMYŚLNE [0-9]
+            DEFAULT [0-9]
           </button>
           <button type="button" className="btn-arcade small cyan" onClick={handleApplyPresetQwerty}>
             PRESET: [0-9] + [QWERTYUIOP]
@@ -127,7 +125,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             const isListening = listeningDigit === digit;
             return (
               <div key={digit} className={`binding-row ${isListening ? 'listening' : ''}`}>
-                <div className="binding-digit">CYFRA {digit}</div>
+                <div className="binding-digit">DIGIT {digit}</div>
                 <div className="binding-keys">
                   {keys.map((k) => (
                     <span key={k} className="key-chip">
@@ -141,12 +139,12 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
                     className={`btn-bind ${isListening ? 'active' : ''}`}
                     onClick={() => setListeningDigit(isListening ? null : digit)}
                   >
-                    {isListening ? 'NACIŚNIJ KLAWISZ...' : '+ DODAJ'}
+                    {isListening ? 'PRESS A KEY...' : '+ ADD KEY'}
                   </button>
                   <button
                     type="button"
                     className="btn-bind-clear"
-                    title="Przywróć tylko domyślną cyfrę"
+                    title="Reset to default digit key"
                     onClick={() => handleResetDigit(digit)}
                   >
                     ↺
@@ -159,10 +157,10 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
 
         <div className="modal-footer">
           <button type="button" className="btn-arcade" onClick={onClose}>
-            ANULUJ
+            CANCEL
           </button>
           <button type="button" className="btn-arcade gold" onClick={handleSave}>
-            ZAPISZ BINDINGI
+            SAVE BINDINGS
           </button>
         </div>
       </div>

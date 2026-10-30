@@ -5,6 +5,7 @@
 export const ROWS = 21;
 export const COLS = 13;
 export const TOTAL_CELLS = ROWS * COLS; // 273
+export const SHIELD_REVEAL_DISTANCE = 7; // Shield starts fading in 7 steps ahead
 
 export type SequenceTier = 'SHORT' | 'MEDIUM' | 'LONG' | 'PHI';
 
@@ -21,113 +22,113 @@ export interface SequencePattern {
 }
 
 export const SEQUENCE_CATALOG: SequencePattern[] = [
-  // --- KRÓTKIE SEKWENCJE (3-4 cyfry) ---
+  // --- SHORT SEQUENCES (3-4 digits) ---
   {
     id: 'slide_right',
-    name: 'ŚLIZG →',
-    subtitle: '1234 // Płynny ruch w prawo',
+    name: 'SLIDE RIGHT →',
+    subtitle: 'Smooth flow achieved!',
     tier: 'SHORT',
     digits: [1, 2, 3, 4],
-    bonusPoints: 180,
+    bonusPoints: 200,
     maxAvgDeltaMs: 280,
     color: '#00f0ff',
   },
   {
     id: 'slide_left',
-    name: '← ŚLIZG',
-    subtitle: '9876 // Płynny ruch w lewo',
+    name: '← SLIDE LEFT',
+    subtitle: 'Reverse flow achieved!',
     tier: 'SHORT',
     digits: [9, 8, 7, 6],
-    bonusPoints: 180,
+    bonusPoints: 200,
     maxAvgDeltaMs: 280,
     color: '#00f0ff',
   },
   {
     id: 'drum_1010',
-    name: 'BĘBNY 1010',
-    subtitle: '1010 // Rytmiczna przeplatanka',
+    name: 'BINARY DRUMS',
+    subtitle: 'Rhythmic two-finger beat!',
     tier: 'SHORT',
     digits: [1, 0, 1, 0],
-    bonusPoints: 160,
+    bonusPoints: 200,
     maxAvgDeltaMs: 260,
     color: '#00e5a3',
   },
   {
     id: 'leet_1337',
-    name: '1337 LEET!',
-    subtitle: '1337 // Hakerski klasyk',
+    name: 'ELITE // 1337!',
+    subtitle: 'Classic hacker cadence!',
     tier: 'SHORT',
     digits: [1, 3, 3, 7],
-    bonusPoints: 220,
+    bonusPoints: 200,
     maxAvgDeltaMs: 290,
     color: '#38ff62',
   },
   {
     id: 'numpad_drop',
-    name: 'ZSYP NUMPAD',
-    subtitle: '2580 // Pionowy zjazd w dół',
+    name: 'VERTICAL DROP',
+    subtitle: 'Straight line descent!',
     tier: 'SHORT',
     digits: [2, 5, 8, 0],
-    bonusPoints: 190,
+    bonusPoints: 200,
     maxAvgDeltaMs: 280,
     color: '#00f0ff',
   },
   {
     id: 'quad_zero',
-    name: 'SPAM 0000!',
-    subtitle: '0000 // Czysty test szybkości palca',
+    name: 'OVERDRIVE SPAM!',
+    subtitle: 'Pure single-finger speed!',
     tier: 'SHORT',
     digits: [0, 0, 0, 0],
-    bonusPoints: 150,
+    bonusPoints: 200,
     maxAvgDeltaMs: 220,
     color: '#a6ff00',
   },
 
-  // --- ŚREDNIE SEKWENCJE (5-7 cyfr) ---
+  // --- MEDIUM SEQUENCES (5-7 digits) ---
   {
     id: 'left_hand',
-    name: 'LEWA DŁOŃ',
-    subtitle: '12345 // Pięć palców lewej dłoni',
+    name: 'LEFT HAND FLOW',
+    subtitle: 'Five-finger sweep!',
     tier: 'MEDIUM',
     digits: [1, 2, 3, 4, 5],
-    bonusPoints: 340,
+    bonusPoints: 350,
     maxAvgDeltaMs: 290,
     color: '#ffea00',
   },
   {
     id: 'right_hand',
-    name: 'PRAWA DŁOŃ',
-    subtitle: '67890 // Pięć palców prawej dłoni',
+    name: 'RIGHT HAND FLOW',
+    subtitle: 'Five-finger sweep!',
     tier: 'MEDIUM',
     digits: [6, 7, 8, 9, 0],
-    bonusPoints: 340,
+    bonusPoints: 350,
     maxAvgDeltaMs: 290,
     color: '#ffea00',
   },
   {
     id: 'frog_odd',
-    name: 'ŻABIE SKOKI (NP)',
-    subtitle: '13579 // Ciąg nieparzysty co drugi klawisz',
+    name: 'ODD LEAPFROG',
+    subtitle: 'Alternating odd cadence!',
     tier: 'MEDIUM',
     digits: [1, 3, 5, 7, 9],
-    bonusPoints: 380,
+    bonusPoints: 350,
     maxAvgDeltaMs: 310,
     color: '#ffae00',
   },
   {
     id: 'frog_even',
-    name: 'ŻABIE SKOKI (P)',
-    subtitle: '24680 // Ciąg parzysty co drugi klawisz',
+    name: 'EVEN LEAPFROG',
+    subtitle: 'Alternating even cadence!',
     tier: 'MEDIUM',
     digits: [2, 4, 6, 8, 0],
-    bonusPoints: 380,
+    bonusPoints: 350,
     maxAvgDeltaMs: 310,
     color: '#ffae00',
   },
   {
     id: 'phi_easter_egg',
-    name: 'Φ ZŁOTA LICZBA FI Φ',
-    subtitle: '16153 // Złota proporcja odblokowana!',
+    name: 'Φ GOLDEN RATIO PHI Φ',
+    subtitle: 'Secret Golden Proportion unlocked!',
     tier: 'PHI',
     digits: [1, 6, 1, 5, 3],
     bonusPoints: 550,
@@ -137,40 +138,40 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
   },
   {
     id: 'palindrome',
-    name: 'PALINDROM ↔',
-    subtitle: '123321 // Lustrzane odbicie tam i z powrotem',
+    name: 'MIRROR PALINDROME ↔',
+    subtitle: 'There and back again!',
     tier: 'MEDIUM',
     digits: [1, 2, 3, 3, 2, 1],
-    bonusPoints: 440,
+    bonusPoints: 450,
     maxAvgDeltaMs: 290,
     color: '#ff9100',
   },
   {
     id: 'loop_123123',
-    name: 'PĘTLA 123×2',
-    subtitle: '123123 // Motyw zapętlony',
+    name: 'DOUBLE TRIPLET LOOP',
+    subtitle: 'Repeating muscle memory!',
     tier: 'MEDIUM',
     digits: [1, 2, 3, 1, 2, 3],
-    bonusPoints: 420,
+    bonusPoints: 450,
     maxAvgDeltaMs: 290,
     color: '#ff9100',
   },
   {
     id: 'numpad_zigzag',
-    name: 'ZYGZAK NUMPAD',
-    subtitle: '159753 // Przekątny krzyż na Numpadzie',
+    name: 'CROSS ZIGZAG',
+    subtitle: 'Diagonal matrix weave!',
     tier: 'MEDIUM',
     digits: [1, 5, 9, 7, 5, 3],
-    bonusPoints: 480,
+    bonusPoints: 450,
     maxAvgDeltaMs: 320,
     color: '#ff6d00',
   },
 
-  // --- DŁUGIE SEKWENCJE (8-12 cyfr - JACKPOTY) ---
+  // --- LONG SEQUENCES (8-12 digits - JACKPOTS) ---
   {
     id: 'double_drums',
-    name: 'JACKPOT // PODWÓJNE BĘBNY',
-    subtitle: '1122334455 // Autostrada dwukliku!',
+    name: 'JACKPOT // DOUBLE DRUMROLL',
+    subtitle: 'High-speed double-tap highway!',
     tier: 'LONG',
     digits: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
     bonusPoints: 900,
@@ -179,8 +180,8 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
   },
   {
     id: 'the_wave',
-    name: 'JACKPOT // WIELKA FALA',
-    subtitle: '1234432100 // Wzrost, odbicie i podwójne zero!',
+    name: 'JACKPOT // THE GREAT WAVE',
+    subtitle: 'Crest, reflection, and hard landing!',
     tier: 'LONG',
     digits: [1, 2, 3, 4, 4, 3, 2, 1, 0, 0],
     bonusPoints: 900,
@@ -190,21 +191,19 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
 ];
 
 /**
- * STAŁY BUDŻET FAIR-PLAY DLA KAŻDEJ PLANSZY (21x13 = 273 pola)
- * Gwarantuje, że w każdej rozgrywce:
- * - występuje dokładnie ta sama liczba sekwencji z każdej wagi (oraz zawsze 1x Złota Liczba Fi 16153),
- * - łączny potencjał bonusowy sekwencji jest zbalansowany,
- * - występuje dokładnie 28 uzbrojonych cyfr z tarczą (Reinforced: 10 w sekwencjach + 18 poza nimi),
- *   dzięki czemu każda plansza daje identyczne szanse punktowe.
+ * FIXED FAIR-PLAY BUDGET FOR EVERY 21x13 BOARD (273 cells)
+ * Guarantees that every single match has the exact same number of sequences
+ * per difficulty tier, the exact same bonus pool (4050 pts), and the exact
+ * same number of Reinforced Shields (26 total: 8 inside sequences + 18 outside).
  */
 export const FAIR_BOARD_CONFIG = {
-  SHORT_COUNT: 5,               // 5 krótkich sekwencji (po 4 cyfry = 20 pól, 5 z puli 6)
-  MEDIUM_5_COUNT: 2,            // 2 średnie 5-cyfrowe (10 pól)
-  PHI_COUNT: 1,                 // 1x 16153 Złota Liczba Fi (zawsze obecny Easter Egg! 5 pól)
-  MEDIUM_6_COUNT: 2,            // 2 średnie 6-cyfrowe (12 pól)
-  LONG_COUNT: 1,                // 1 długi Jackpot 10-cyfrowy (10 pól)
-  REINFORCED_IN_SEQUENCES: 8,   // Dokładnie 8 tarcz wewnątrz sekwencji (podwójny bonus!)
-  REINFORCED_IN_RANDOM: 18,     // Dokładnie 18 tarcz poza sekwencjami (łącznie 26 tarcz na planszę)
+  SHORT_COUNT: 5,               // 5 short sequences (200 pts each = 1000 pts)
+  MEDIUM_5_COUNT: 2,            // 2 medium 5-digit sequences (350 pts each = 700 pts)
+  PHI_COUNT: 1,                 // 1x Golden Ratio Phi Easter Egg (550 pts)
+  MEDIUM_6_COUNT: 2,            // 2 medium 6-digit sequences (450 pts each = 900 pts)
+  LONG_COUNT: 1,                // 1 long 10-digit Jackpot sequence (900 pts)
+  REINFORCED_IN_SEQUENCES: 8,   // 8 shields inside sequences (stackable 2x + sequence bonus)
+  REINFORCED_IN_RANDOM: 18,     // 18 shields outside sequences (26 shields total)
 };
 
 export interface PlacedSequenceInstance {
@@ -241,26 +240,17 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 /**
- * Generuje zbalansowaną planszę 21x13 (273 cyfry) z gwarancją uczciwego budżetu
- * sekwencji oraz tarcz (Reinforced Keys).
+ * Generates a balanced 21x13 board (273 digits) with a strictly fair sequence
+ * and reinforced shield budget. Sequences are completely disguised in the grid
+ * so players must discover them on their own.
  */
 export function generateFairBoard(): GeneratedBoard {
-  // Wybieramy zestaw sekwencji o stałej strukturze trudności i punktacji:
-  // Aby łączna waga punktowa sekwencji była zawsze identyczna w każdej grze (100% Fair Play!),
-  // losujemy konkretne sekwencje i normujemy ich bonusy w obrębie koszyka lub bierzemy stały koszyk wagowy:
   const shortPool = SEQUENCE_CATALOG.filter((s) => s.tier === 'SHORT');
   const med5Pool = SEQUENCE_CATALOG.filter((s) => s.tier === 'MEDIUM' && s.digits.length === 5);
   const phiPattern = SEQUENCE_CATALOG.find((s) => s.tier === 'PHI')!;
   const med6Pool = SEQUENCE_CATALOG.filter((s) => s.tier === 'MEDIUM' && s.digits.length === 6);
   const longPool = SEQUENCE_CATALOG.filter((s) => s.tier === 'LONG');
 
-  // Stałe, sprawiedliwe progi punktowe dla koszyków (każda gra ma identyczną sumę możliwych bonusów = 3350 pkt!):
-  // SHORT = 200 pkt (5x = 1000 pkt)
-  // MEDIUM_5 = 350 pkt (2x = 700 pkt)
-  // PHI = 550 pkt (1x = 550 pkt)
-  // MEDIUM_6 = 450 pkt (2x = 900 pkt)
-  // LONG = 900 pkt (1x = 900 pkt)
-  // Razem zawsze dokładnie 4050 pkt w puli sekwencji!
   const selectedPatterns: SequencePattern[] = [
     ...shuffleArray(shortPool)
       .slice(0, FAIR_BOARD_CONFIG.SHORT_COUNT)
@@ -277,18 +267,16 @@ export function generateFairBoard(): GeneratedBoard {
       .map((p) => ({ ...p, bonusPoints: 900 })),
   ];
 
-  // Tasujemy kolejność rozmieszczania, zaczynając od najdłuższych, aby zawsze się zmieściły
+  // Place longest sequences first so they always fit cleanly
   const orderedForPlacement = [...selectedPatterns].sort((a, b) => b.digits.length - a.digits.length);
 
-  const occupied = new Uint8Array(TOTAL_CELLS); // 0 = wolne, 1 = zajęte przez sekwencję, 2 = bufor odstępu
+  const occupied = new Uint8Array(TOTAL_CELLS);
   const placedInstances: PlacedSequenceInstance[] = [];
 
   for (let i = 0; i < orderedForPlacement.length; i++) {
     const pattern = orderedForPlacement[i];
     const len = pattern.digits.length;
 
-    // Zbieramy wszystkie możliwe indeksy startowe (z zachowaniem min. 2 pól odstępu między sekwencjami
-    // i z pominięciem indeksu 0-1, aby gracz miał chwilę na rozbieg)
     const validStarts: number[] = [];
     for (let start = 2; start <= TOTAL_CELLS - len - 1; start++) {
       let canFit = true;
@@ -321,13 +309,11 @@ export function generateFairBoard(): GeneratedBoard {
     });
   }
 
-  // Sortujemy instancje rosnąco po indeksie startowym
   placedInstances.sort((a, b) => a.startIndex - b.startIndex);
   placedInstances.forEach((inst, idx) => {
     inst.instanceId = idx + 1;
   });
 
-  // Inicjalizujemy komórki losowymi cyframi 0-9
   const cells: CellData[] = new Array(TOTAL_CELLS);
   for (let idx = 0; idx < TOTAL_CELLS; idx++) {
     cells[idx] = {
@@ -341,7 +327,6 @@ export function generateFairBoard(): GeneratedBoard {
     };
   }
 
-  // Wpisujemy sekwencje na planszę
   const sequenceIndices: number[] = [];
   for (const inst of placedInstances) {
     const { pattern, startIndex, endIndex, instanceId } = inst;
@@ -363,7 +348,6 @@ export function generateFairBoard(): GeneratedBoard {
     }
   }
 
-  // Rozmieszczamy dokładnie REINFORCED_IN_SEQUENCES tarcz wewnątrz sekwencji
   const chosenSeqReinforced = shuffleArray(sequenceIndices).slice(
     0,
     FAIR_BOARD_CONFIG.REINFORCED_IN_SEQUENCES
@@ -372,7 +356,6 @@ export function generateFairBoard(): GeneratedBoard {
     cells[idx].isReinforced = true;
   }
 
-  // Rozmieszczamy dokładnie REINFORCED_IN_RANDOM tarcz poza sekwencjami
   const chosenRandReinforced = shuffleArray(nonSequenceIndices).slice(
     0,
     FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM
@@ -395,8 +378,33 @@ export function generateFairBoard(): GeneratedBoard {
   };
 }
 
+/**
+ * Calculates the proximity alpha factor (0..1) for a Reinforced cell ahead of currentIndex.
+ * Only visible when 1 <= (cellIndex - currentIndex) <= 7.
+ * Distance 7 -> alpha 0.14
+ * Distance 6 -> alpha 0.28
+ * Distance 5 -> alpha 0.42
+ * Distance 4 -> alpha 0.57
+ * Distance 3 -> alpha 0.71
+ * Distance 2 -> alpha 0.85
+ * Distance 1 -> alpha 1.00
+ * Distance 0 (active cell) -> alpha 1.00
+ */
+export function getShieldProximityAlpha(cellIndex: number, currentIndex: number): number {
+  const distance = cellIndex - currentIndex;
+  if (distance < 0 || distance > SHIELD_REVEAL_DISTANCE) {
+    return 0;
+  }
+  if (distance === 0) {
+    return 1;
+  }
+  // Smooth step from 1/7 up to 7/7 as player gets closer
+  const factor = (SHIELD_REVEAL_DISTANCE - distance + 1) / SHIELD_REVEAL_DISTANCE;
+  return Number(factor.toFixed(3));
+}
+
 // ============================================================================
-// DYNAMICZNY 5-PUNKTOWY GRADIENT SPEKTRUM PRĘDKOŚCI / PUNKTÓW
+// DYNAMIC 5-STOP SPEED / POINTS SPECTRUM GRADIENT
 // ============================================================================
 
 interface RGB {
@@ -406,12 +414,12 @@ interface RGB {
 }
 
 /**
- * 5-stopniowe spektrum arcade 8-bit:
- * 0.00 (Wolno / Niskie pkt)     -> #38b6ff (Chłodny Błękit)
- * 0.25 (Dobry rytm)             -> #00ff9d (Neonowy Szmaragd)
- * 0.50 (Szybko)                 -> #ffea00 (Złoty Żółty)
- * 0.75 (Bardzo szybko / Wysoko) -> #ff5500 (Ognisty Pomarańcz)
- * 1.00 (Ultraszybko / Kosmos)   -> #ff00e5 (Elektryczna Magenta)
+ * 5-stop 8-bit arcade spectrum:
+ * 0.00 (Slow / Low pts)      -> #38b6ff (Cool Cyan-Blue)
+ * 0.25 (Steady rhythm)       -> #00ff9d (Neon Emerald)
+ * 0.50 (Fast)                -> #ffea00 (Arcade Gold)
+ * 0.75 (Very Fast / High)    -> #ff5500 (Blazing Orange)
+ * 1.00 (Hyper Speed / Max)   -> #ff00e5 (Electric Magenta)
  */
 const SPECTRUM_STOPS: { pos: number; color: RGB }[] = [
   { pos: 0.0, color: { r: 56, g: 182, b: 255 } },   // #38b6ff
@@ -425,10 +433,6 @@ function lerpChannel(a: number, b: number, t: number): number {
   return Math.round(a + (b - a) * t);
 }
 
-/**
- * Zwraca kolor CSS RGB przesuwający się płynnie w 5-kolorowym spektrum
- * w zależności od współczynnika intensywności t w przedziale [0, 1].
- */
 export function getSpectrumColor(t: number): string {
   const clamped = Math.max(0, Math.min(1, t));
   for (let i = 0; i < SPECTRUM_STOPS.length - 1; i++) {
@@ -446,20 +450,14 @@ export function getSpectrumColor(t: number): string {
   return `rgb(${last.r}, ${last.g}, ${last.b})`;
 }
 
-/**
- * Wylicza pozycję w spektrum [0..1] na podstawie zdobytych punktów za pojedynczy klawisz
- * oraz czasu reakcji (deltaMs).
- */
 export function computePointIntensity(points: number, deltaMs: number): number {
-  // Prędkość: 60ms -> 1.0, 450ms -> 0.0
   const speedFactor = Math.max(0, Math.min(1, (450 - deltaMs) / (450 - 60)));
-  // Punkty: 15 pkt -> 0.0, 260+ pkt -> 1.0
   const pointsFactor = Math.max(0, Math.min(1, (points - 15) / 245));
   return Math.max(speedFactor * 0.65 + pointsFactor * 0.35, pointsFactor);
 }
 
 // ============================================================================
-// DOMYŚLNE BINDINGI KLAWISZY + LOCALSTORAGE
+// KEYBINDINGS + LOCALSTORAGE
 // ============================================================================
 
 export type KeyBindingsMap = Record<number, string[]>;
