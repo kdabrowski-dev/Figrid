@@ -5,7 +5,8 @@
 export const ROWS = 21;
 export const COLS = 13;
 export const TOTAL_CELLS = ROWS * COLS; // 273
-export const SHIELD_REVEAL_DISTANCE = 7; // Shield starts fading in 7 steps/cells ahead
+export const SHIELD_REVEAL_DISTANCE = 7; // Linear mode: shield starts fading in 7 steps ahead
+export const OMNI_SHIELD_REVEAL_DISTANCE = 3; // Omni-8 mode: 2D plane radius halved (3 cells around head)
 
 export type GameMode = 'LINEAR' | 'OMNI';
 export type SequenceTier = 'SHORT' | 'MEDIUM' | 'LONG' | 'PHI';
@@ -410,13 +411,14 @@ export function getOmni2DShieldAlpha(cellIndex: number, headIndices: number[]): 
     }
   }
 
-  if (minDist > SHIELD_REVEAL_DISTANCE) {
+  if (minDist > OMNI_SHIELD_REVEAL_DISTANCE) {
     return 0;
   }
   if (minDist === 0) {
     return 1;
   }
-  const factor = (SHIELD_REVEAL_DISTANCE - minDist + 1) / SHIELD_REVEAL_DISTANCE;
+  const factor =
+    (OMNI_SHIELD_REVEAL_DISTANCE - minDist + 1) / OMNI_SHIELD_REVEAL_DISTANCE;
   return Number(factor.toFixed(3));
 }
 

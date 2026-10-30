@@ -344,7 +344,9 @@ body {
   grid-template-columns: repeat(var(--cols), 36px);
   grid-template-rows: repeat(var(--rows), 30px);
   gap: 2px;
-  contain: content;
+  /* Note: do NOT use contain:content/paint here because scaled edge tiles (scale 1.12)
+     and box-shadows on row 0 / row 20 / col 0 / col 12 would have their edges clipped! */
+  overflow: visible;
   font-family: 'JetBrains Mono', monospace;
 }
 
