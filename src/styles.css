@@ -263,6 +263,18 @@ body {
   padding: 6px 10px;
 }
 
+.btn-arcade.disabled-locked,
+.mode-card-btn.disabled-locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mode-locked-note {
+  color: #f87171;
+  font-size: 7px;
+  margin-left: 6px;
+}
+
 /* ============================================================================
    MAIN WORKSPACE (21×13 BOARD + SPEED TELEMETRY)
    ============================================================================ */

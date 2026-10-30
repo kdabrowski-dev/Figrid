@@ -10,6 +10,7 @@ interface KeyBindingsModalProps {
   isOpen: boolean;
   bindings: KeyBindingsMap;
   gameMode: GameMode;
+  isModeLocked: boolean;
   onSave: (newBindings: KeyBindingsMap, newMode: GameMode) => void;
   onClose: () => void;
 }
@@ -18,6 +19,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   isOpen,
   bindings,
   gameMode,
+  isModeLocked,
   onSave,
   onClose,
 }) => {
@@ -155,12 +157,22 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
 
         {/* NAVIGATION MODE SELECTOR */}
         <div className="settings-mode-section">
-          <div className="settings-section-title">NAVIGATION MODE</div>
+          <div className="settings-section-title">
+            NAVIGATION MODE{' '}
+            {isModeLocked && (
+              <span className="mode-locked-note">(LOCKED DURING ACTIVE RUN - RESTART TO CHANGE)</span>
+            )}
+          </div>
           <div className="mode-toggle-grid">
             <button
               type="button"
-              className={`mode-card-btn ${draftMode === 'LINEAR' ? 'active' : ''}`}
-              onClick={() => setDraftMode('LINEAR')}
+              disabled={isModeLocked}
+              className={`mode-card-btn ${draftMode === 'LINEAR' ? 'active' : ''} ${
+                isModeLocked ? 'disabled-locked' : ''
+              }`}
+              onClick={() => {
+                if (!isModeLocked) setDraftMode('LINEAR');
+              }}
             >
               <span className="mode-card-name">LINEAR (LEFT TO RIGHT)</span>
               <span className="mode-card-desc">
@@ -169,8 +181,13 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             </button>
             <button
               type="button"
-              className={`mode-card-btn ${draftMode === 'OMNI' ? 'active' : ''}`}
-              onClick={() => setDraftMode('OMNI')}
+              disabled={isModeLocked}
+              className={`mode-card-btn ${draftMode === 'OMNI' ? 'active' : ''} ${
+                isModeLocked ? 'disabled-locked' : ''
+              }`}
+              onClick={() => {
+                if (!isModeLocked) setDraftMode('OMNI');
+              }}
             >
               <span className="mode-card-name">OMNI-8 (FREE DIRECTION + WRAP)</span>
               <span className="mode-card-desc">

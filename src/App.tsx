@@ -63,6 +63,7 @@ export const App: React.FC = () => {
   const [sequencesHitCount, setSequencesHitCount] = useState<number>(0);
   const [reinforcedHitCount, setReinforcedHitCount] = useState<number>(0);
   const [isFinished, setIsFinished] = useState<boolean>(false);
+  const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [activeBanners, setActiveBanners] = useState<BannerPopup[]>([]);
   const [wrapGhosts, setWrapGhosts] = useState<WrapGhostProjection[]>([]);
 
@@ -363,6 +364,7 @@ export const App: React.FC = () => {
     setSequencesHitCount(0);
     setReinforcedHitCount(0);
     setIsFinished(false);
+    setHasStarted(false);
     setActiveBanners([]);
     setChartTick((t) => t + 1);
 
@@ -400,10 +402,10 @@ export const App: React.FC = () => {
       updateLinearShieldVisibility(0, board);
     } else {
       const startIdx = 0;
-      eng.doneMask[startIdx] = 1;
-      eng.clearedCount = 1;
-      const startNode = cellNodesRef.current[startIdx];
-      if (startNode) startNode.classList.add('done');
+      // Do NOT mark cell 0 as done until the player makes their first move!
+      // Progress starts at 0 / 273.
+      eng.doneMask.fill(0);
+      eng.clearedCount = 0;
 
       eng.omniBranches = [
         {
@@ -414,7 +416,7 @@ export const App: React.FC = () => {
         },
       ];
       if (progressNodeRef.current) {
-        progressNodeRef.current.textContent = `1 / ${TOTAL_CELLS}`;
+        progressNodeRef.current.textContent = `0 / ${TOTAL_CELLS}`;
       }
       syncOmniVisualState(board);
     }
@@ -511,6 +513,7 @@ export const App: React.FC = () => {
         });
 
         if (shieldHeadsMatching.length > 0) {
+          setHasStarted(true);
           // Second hit on reinforced head(s)! Mark shield as cracked/cleared on those branches
           for (const br of shieldHeadsMatching) {
             br.shieldCrackedOnHead = true;
@@ -557,12 +560,25 @@ export const App: React.FC = () => {
 
         // 2. Otherwise, expand all branches whose head is ready to move to neighbors matching `mappedDigit`
         const nextBranches: OmniBranch[] = [];
+        const isInitialUnpressedStart = eng.clearedCount === 0 && eng.omniBranches.length === 1 && eng.omniBranches[0].trail.length === 1;
+
         for (let b = 0; b < eng.omniBranches.length; b++) {
           const br = eng.omniBranches[b];
           const headCell = board.cells[br.headIndex];
           // If this branch's head still has an uncracked shield, it cannot step to neighbors yet
           if (headCell.isReinforced && !br.shieldCrackedOnHead) {
             continue;
+          }
+
+          // At the very start of the board (progress 0/273), if the player presses the digit
+          // of the starting head (index 0) itself, we also allow claiming index 0 directly!
+          if (isInitialUnpressedStart && headCell.digit === mappedDigit) {
+            nextBranches.push({
+              headIndex: br.headIndex,
+              trail: [br.headIndex],
+              visitedSet: new Set([br.headIndex]),
+              shieldCrackedOnHead: !headCell.isReinforced,
+            });
           }
 
           const neighbors = getAvailableOmniNeighbors(
@@ -574,12 +590,15 @@ export const App: React.FC = () => {
           for (let n = 0; n < neighbors.length; n++) {
             const nIdx = neighbors[n];
             if (board.cells[nIdx].digit === mappedDigit) {
-              const nextVisited = new Set(br.visitedSet);
-              nextVisited.add(nIdx);
+              // If this was the very first move and the player stepped to a neighbor instead of typing cell 0,
+              // cell 0 remains unvisited so the player can clear it later, and the neighbor becomes the 1st cleared cell!
+              const baseTrail = isInitialUnpressedStart ? [] : br.trail;
+              const baseVisited = isInitialUnpressedStart ? new Set<number>() : new Set(br.visitedSet);
+              baseVisited.add(nIdx);
               nextBranches.push({
                 headIndex: nIdx,
-                trail: [...br.trail, nIdx],
-                visitedSet: nextVisited,
+                trail: [...baseTrail, nIdx],
+                visitedSet: baseVisited,
                 shieldCrackedOnHead: !board.cells[nIdx].isReinforced,
               });
             }
@@ -699,6 +718,7 @@ export const App: React.FC = () => {
         }
 
         eng.omniBranches = deduplicated;
+        setHasStarted(true);
 
         // Track typed digit stream for hidden sequence detection in OMNI mode
         eng.omniRecentDigits.push(mappedDigit);
@@ -799,6 +819,7 @@ export const App: React.FC = () => {
       const currentNode = cellNodesRef.current[idx];
 
       if (mappedDigit === currentCell.digit) {
+        setHasStarted(true);
         const delta =
           eng.lastKeystrokeTime === 0
             ? 240
@@ -994,7 +1015,7 @@ export const App: React.FC = () => {
   const handleSaveSettings = (newBindings: KeyBindingsMap, newMode: GameMode) => {
     setBindings(newBindings);
     saveKeyBindings(newBindings);
-    if (newMode !== gameMode) {
+    if (!hasStarted && newMode !== gameMode) {
       setGameMode(newMode);
       saveGameMode(newMode);
       startNewGame();
@@ -1002,6 +1023,7 @@ export const App: React.FC = () => {
   };
 
   const handleQuickToggleMode = () => {
+    if (hasStarted) return;
     const nextMode: GameMode = gameMode === 'LINEAR' ? 'OMNI' : 'LINEAR';
     setGameMode(nextMode);
     saveGameMode(nextMode);
@@ -1021,8 +1043,15 @@ export const App: React.FC = () => {
           </div>
           <button
             type="button"
-            className={`btn-arcade small ${gameMode === 'OMNI' ? 'gold' : 'cyan'}`}
-            title="Switch between Linear and Omni-8 Free Direction mode"
+            disabled={hasStarted}
+            className={`btn-arcade small ${gameMode === 'OMNI' ? 'gold' : 'cyan'} ${
+              hasStarted ? 'disabled-locked' : ''
+            }`}
+            title={
+              hasStarted
+                ? 'Mode is locked while a run is in progress. Press RESTART [ESC] to switch mode.'
+                : 'Switch between Linear and Omni-8 Free Direction mode'
+            }
             onClick={(e) => {
               e.currentTarget.blur();
               handleQuickToggleMode();
@@ -1203,6 +1232,7 @@ export const App: React.FC = () => {
         isOpen={isBindingsOpen}
         bindings={bindings}
         gameMode={gameMode}
+        isModeLocked={hasStarted}
         onSave={handleSaveSettings}
         onClose={() => setIsBindingsOpen(false)}
       />
