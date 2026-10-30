@@ -488,45 +488,32 @@ body {
   z-index: 3;
 }
 
-/* OMNI-8 Quantum Superposition: Blurry Path Heads when multiple paths match */
+/* OMNI-8 Quantum Superposition: Subtle, clean candidate path heads when multiple paths match */
 .cell.omni-blurry-head {
-  background: radial-gradient(
-    circle,
-    rgba(255, 0, 229, 0.88) 0%,
-    rgba(0, 240, 255, 0.78) 100%
-  );
-  color: #050811 !important;
-  border: 1.5px dashed #ffffff;
-  box-shadow: 0 0 14px rgba(255, 0, 229, 0.8), 0 0 22px rgba(0, 240, 255, 0.55);
-  transform: scale(1.1);
+  background-color: rgba(56, 189, 248, 0.24);
+  color: #f8fafc !important;
+  border: 1.5px solid rgba(56, 189, 248, 0.88);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.32);
+  transform: scale(1.06);
   z-index: 3;
-  animation: blurryHeadPulse 0.7s ease-in-out infinite alternate;
 }
 
-@keyframes blurryHeadPulse {
-  0% {
-    filter: blur(0px) brightness(1.05);
-    transform: scale(1.06);
-  }
-  100% {
-    filter: blur(0.55px) brightness(1.22);
-    transform: scale(1.13);
-  }
+.cell.omni-blurry-head .futuristic-digit-svg .glyph-main {
+  fill: #ffffff;
 }
 
-/* Uncommitted quantum branch trail cells leading up to a blurry head */
+/* Uncommitted quantum branch trail cells leading up to a candidate head */
 .cell.omni-branch-trail {
-  background-color: rgba(255, 0, 229, 0.16);
-  border-color: rgba(255, 0, 229, 0.48);
-  color: #f5d0fe;
+  background-color: rgba(56, 189, 248, 0.09);
+  border-color: rgba(56, 189, 248, 0.32);
+  color: #bae6fd;
 }
 
-/* Available next-step neighbor tiles in OMNI-8 (including Torus Wrap-Around & Phase-Jump targets!) */
+/* Available next-step neighbor tiles in OMNI-8 (subtle outline so it doesn't clutter the board) */
 .cell.omni-available:not(.active):not(.omni-blurry-head) {
-  background-color: rgba(0, 240, 255, 0.08);
-  border: 1px dashed rgba(0, 240, 255, 0.48);
-  box-shadow: inset 0 0 6px rgba(0, 240, 255, 0.2);
-  color: #ffffff;
+  background-color: rgba(148, 163, 184, 0.05);
+  border: 1px dashed rgba(148, 163, 184, 0.32);
+  color: #cbd5e1;
 }
 
 /* Completed cell: ONLY NOW does the tile background appear! */
@@ -578,19 +565,32 @@ body {
   }
 }
 
-/* Mistake shake on active cell */
+/* Temporary red flash + shake on mistake (fades back to normal automatically) */
 .cell.error {
-  background-color: var(--accent-red) !important;
-  color: #ffffff !important;
-  border-color: #ffffff !important;
-  box-shadow: 0 0 14px var(--accent-red) !important;
-  animation: cellShake 0.18s linear;
+  animation: cellErrorFlash 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-@keyframes cellShake {
-  0%, 100% { transform: translateX(0) scale(1.12); }
-  25% { transform: translateX(-4px) scale(1.16); }
-  75% { transform: translateX(4px) scale(1.16); }
+@keyframes cellErrorFlash {
+  0% {
+    background-color: var(--accent-red);
+    color: #ffffff;
+    border-color: #ffffff;
+    box-shadow: 0 0 16px var(--accent-red);
+    transform: translateX(0) scale(1.14);
+  }
+  25% {
+    background-color: var(--accent-red);
+    color: #ffffff;
+    transform: translateX(-4px) scale(1.16);
+  }
+  65% {
+    background-color: rgba(255, 42, 84, 0.55);
+    color: #ffffff;
+    transform: translateX(3px) scale(1.12);
+  }
+  100% {
+    transform: translateX(0) scale(1.1);
+  }
 }
 
 /* ============================================================================
@@ -812,6 +812,10 @@ body {
 
 .telemetry-val.highlight-gold {
   color: var(--accent-yellow);
+}
+
+.telemetry-val.highlight-red {
+  color: var(--accent-red);
 }
 
 /* ============================================================================

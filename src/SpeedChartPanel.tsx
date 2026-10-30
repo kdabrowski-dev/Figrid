@@ -16,6 +16,7 @@ interface SpeedChartPanelProps {
   lastSpeedMs: number | null;
   avgSpeedMs: number | null;
   peakKps: number;
+  mistakesCount: number;
   sequencesHitCount: number;
   totalSequencesCount: number;
   reinforcedHitCount: number;
@@ -28,6 +29,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
   lastSpeedMs,
   avgSpeedMs,
   peakKps,
+  mistakesCount,
   sequencesHitCount,
   totalSequencesCount,
   reinforcedHitCount,
@@ -225,10 +227,14 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
               {reinforcedHitCount} / {totalReinforcedCount}
             </span>
           </div>
-          <div className="telemetry-item full-span">
-            <span className="telemetry-label">SECRET SEQUENCES TRIGGERED</span>
+          <div className="telemetry-item">
+            <span className="telemetry-label">MISTAKES</span>
+            <span className="telemetry-val highlight-red">{mistakesCount}</span>
+          </div>
+          <div className="telemetry-item">
+            <span className="telemetry-label">SECRET SEQUENCES</span>
             <span className="telemetry-val highlight-gold">
-              {sequencesHitCount} / {totalSequencesCount} DISCOVERED
+              {sequencesHitCount} / {totalSequencesCount}
             </span>
           </div>
         </div>

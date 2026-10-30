@@ -62,6 +62,7 @@ export const App: React.FC = () => {
   const [peakKps, setPeakKps] = useState<number>(0);
   const [sequencesHitCount, setSequencesHitCount] = useState<number>(0);
   const [reinforcedHitCount, setReinforcedHitCount] = useState<number>(0);
+  const [mistakesCount, setMistakesCount] = useState<number>(0);
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [activeBanners, setActiveBanners] = useState<BannerPopup[]>([]);
@@ -105,6 +106,7 @@ export const App: React.FC = () => {
     peakKps: 0,
     sequencesHit: 0,
     reinforcedHit: 0,
+    mistakes: 0,
     isFinished: false,
     bannerCounter: 1,
   });
@@ -162,7 +164,8 @@ export const App: React.FC = () => {
         'omni-blurry-head',
         'omni-branch-trail',
         'omni-available',
-        'shield-cracked'
+        'shield-cracked',
+        'error'
       );
       if (eng.doneMask[idx] === 1) {
         node.classList.add('done');
@@ -355,6 +358,7 @@ export const App: React.FC = () => {
     eng.peakKps = 0;
     eng.sequencesHit = 0;
     eng.reinforcedHit = 0;
+    eng.mistakes = 0;
     eng.isFinished = false;
 
     samplesRef.current = [];
@@ -363,6 +367,7 @@ export const App: React.FC = () => {
     setPeakKps(0);
     setSequencesHitCount(0);
     setReinforcedHitCount(0);
+    setMistakesCount(0);
     setIsFinished(false);
     setHasStarted(false);
     setActiveBanners([]);
@@ -616,6 +621,8 @@ export const App: React.FC = () => {
 
           eng.score = Math.max(0, eng.score - penalty);
           eng.lastKeystrokeTime = now;
+          eng.mistakes += 1;
+          setMistakesCount(eng.mistakes);
 
           for (const br of eng.omniBranches) {
             const hNode = cellNodesRef.current[br.headIndex];
@@ -623,6 +630,13 @@ export const App: React.FC = () => {
               hNode.classList.remove('error');
               void hNode.offsetWidth;
               hNode.classList.add('error');
+              hNode.addEventListener(
+                'animationend',
+                () => {
+                  hNode.classList.remove('error');
+                },
+                { once: true }
+              );
             }
           }
 
@@ -982,11 +996,20 @@ export const App: React.FC = () => {
 
         eng.score = Math.max(0, eng.score - penalty);
         eng.lastKeystrokeTime = now;
+        eng.mistakes += 1;
+        setMistakesCount(eng.mistakes);
 
         if (currentNode) {
           currentNode.classList.remove('error');
           void currentNode.offsetWidth;
           currentNode.classList.add('error');
+          currentNode.addEventListener(
+            'animationend',
+            () => {
+              currentNode.classList.remove('error');
+            },
+            { once: true }
+          );
         }
 
         triggerDeltaPopup(-penalty, '#ff2a54', 'MISS!');
@@ -1202,6 +1225,7 @@ export const App: React.FC = () => {
           lastSpeedMs={lastSpeedMs}
           avgSpeedMs={avgSpeedMs}
           peakKps={peakKps}
+          mistakesCount={mistakesCount}
           sequencesHitCount={sequencesHitCount}
           totalSequencesCount={board.sequences.length}
           reinforcedHitCount={reinforcedHitCount}
