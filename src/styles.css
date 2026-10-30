@@ -336,39 +336,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 18px;
+  width: 13px;
+  height: 17px;
   transition: color 0.24s cubic-bezier(0.22, 1, 0.36, 1), filter 0.24s ease;
 }
 
-/* Custom Futuristic 8-Bit Cyber-Voxel Digit Glyphs (SVG) */
+/* Custom Futuristic 8-Bit Cyber-Voxel Digit Glyphs (SVG - Single pure color, zero artifacts) */
 .futuristic-digit-svg {
-  width: 14px;
-  height: 18px;
+  width: 13px;
+  height: 17px;
   display: block;
   overflow: visible;
+  shape-rendering: geometricPrecision;
 }
 
 .futuristic-digit-svg .glyph-main {
   fill: currentColor;
   transition: fill 0.2s ease;
-}
-
-.futuristic-digit-svg .glyph-accent {
-  fill: var(--accent-cyan);
-  opacity: 0.72;
-  transition: fill 0.2s ease, opacity 0.2s ease;
-}
-
-.cell.active .futuristic-digit-svg .glyph-accent,
-.cell.omni-blurry-head .futuristic-digit-svg .glyph-accent {
-  fill: #050811;
-  opacity: 0.9;
-}
-
-.cell.done .futuristic-digit-svg .glyph-accent {
-  fill: var(--text-done);
-  opacity: 0.5;
 }
 
 /* ============================================================================

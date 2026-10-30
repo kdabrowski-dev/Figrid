@@ -1,66 +1,47 @@
 // ============================================================================
 // FIGRID // Custom Futuristic 8-Bit Glyph Set (0-9)
-// Original cyber-voxel stencil geometry designed exclusively for Figrid digits.
+// Pure single-color geometric cyber-pixel grid with 45-degree chamfered edges
+// and precision micro-stencil gaps — zero multi-color artifacts, 100% readable.
 // ============================================================================
 
 import React from 'react';
 
 /**
- * Each digit 0-9 is constructed on a 7x9 cyber-voxel grid (viewBox="0 0 14 18")
- * featuring 45-degree chamfered corners, stencil laser-cuts, and futuristic
- * 8-bit proportions that do not exist in any standard font.
+ * Each digit 0-9 is sculpted on a clean 12x16 geometric grid (viewBox="0 0 12 16")
+ * using a single unified monochrome path (`currentColor`).
+ * Style: Futuristic 8-bit arcade meets sleek sci-fi HUD — beveled 45-degree
+ * outer corners, crisp vertical/horizontal bars, and subtle stencil splits.
  */
-const GLYPH_PATHS: Record<number, { main: string; accent: string }> = {
-  0: {
-    // Chamfered cyber-octagon with diagonal energy slash cut
-    main: 'M 4 0 H 12 L 14 2 V 14 L 10 18 H 2 L 0 16 V 4 L 4 0 Z M 4 3 L 3 4 V 14 L 4 15 H 10 L 11 14 V 4 L 10 3 H 4 Z',
-    accent: 'M 5 11 L 9 7 M 5 12 H 7 V 10 H 5 Z M 7 8 H 9 V 6 H 7 Z',
-  },
-  1: {
-    // Cyber blade pillar with uppervisor hook and split stencil base
-    main: 'M 6 0 H 10 V 14 H 6 V 4 H 3 V 2 L 6 0 Z M 2 15 H 12 V 18 H 2 V 15 Z',
-    accent: 'M 10 4 H 12 V 8 H 10 Z',
-  },
-  2: {
-    // Futuristic Z-runner with detached top-left emitter and angled chute
-    main: 'M 4 0 H 12 L 14 2 V 8 L 11 11 H 4 V 14 H 14 V 18 H 0 V 10 L 3 7 H 10 V 3 H 4 V 0 Z',
-    accent: 'M 0 1 H 3 V 4 H 0 Z',
-  },
-  3: {
-    // Twin-turbine right frame with floating center core bar
-    main: 'M 0 0 H 12 L 14 2 V 7 L 12 9 L 14 11 V 16 L 12 18 H 0 V 15 H 10 L 11 14 V 11 H 10 V 7 L 11 6 V 4 L 10 3 H 0 V 0 Z',
-    accent: 'M 3 7 H 9 V 11 H 3 Z',
-  },
-  4: {
-    // Open-top mecha fork with offset crossbar and heavy right stabilizer
-    main: 'M 0 0 H 4 V 8 H 9 V 0 H 13 V 9 H 14 V 12 H 13 V 18 H 9 V 12 H 0 V 0 Z',
-    accent: 'M 4 2 H 6 V 6 H 4 Z',
-  },
-  5: {
-    // Inverted cyber-hook with razor bottom-right chamfer
-    main: 'M 0 0 H 14 V 3 H 4 V 7 H 12 L 14 9 V 15 L 11 18 H 0 V 15 H 10 L 11 14 V 10 H 0 V 0 Z',
-    accent: 'M 11 4 H 14 V 6 H 11 Z',
-  },
-  6: {
-    // Slanted top-scanner with armored lower chamber
-    main: 'M 4 0 H 13 V 3 H 5 L 4 4 V 7 H 12 L 14 9 V 16 L 12 18 H 2 L 0 16 V 4 L 4 0 Z M 4 10 V 14 L 5 15 H 10 L 11 14 V 10 H 4 Z',
-    accent: 'M 6 11 H 8 V 13 H 6 Z',
-  },
-  7: {
-    // Railgun overhang with diagonal plasma beam and mid-fin stabilizer
-    main: 'M 0 0 H 14 V 5 L 7 18 H 3 L 9 6 H 5 V 3 H 0 V 0 Z',
-    accent: 'M 2 9 H 5 V 12 H 2 Z M 10 11 H 13 V 14 H 10 Z',
-  },
-  8: {
-    // Asymmetric dual-reactor core with stencil waist separation
-    main: 'M 2 0 H 12 L 14 2 V 7 L 12 8 H 2 L 0 7 V 2 L 2 0 Z M 4 3 V 6 H 10 V 3 H 4 Z M 2 10 H 12 L 14 11 V 16 L 12 18 H 2 L 0 16 V 11 L 2 10 Z M 4 12 V 15 H 10 V 12 H 4 Z',
-    accent: 'M 6 8 H 8 V 10 H 6 Z',
-  },
-  9: {
-    // Upper reactor visor with sweeping lower tail blade
-    main: 'M 2 0 H 12 L 14 2 V 14 L 10 18 H 1 V 15 H 9 L 10 14 V 11 H 2 L 0 9 V 2 L 2 0 Z M 4 3 V 8 H 10 V 3 H 4 Z',
-    accent: 'M 6 4 H 8 V 7 H 6 Z',
-  },
+const GLYPH_PATHS: Record<number, string> = {
+  // 0: Chamfered sci-fi octagon with clean rectangular core cutout
+  0: 'M 3 0 H 9 L 12 3 V 13 L 9 16 H 3 L 0 13 V 3 L 3 0 Z M 4 3 L 3 4 V 12 L 4 13 H 8 L 9 12 V 4 L 8 3 H 4 Z',
+
+  // 1: Sleek cyber-monolith with angled top nose and solid balanced base
+  1: 'M 5 0 H 8 V 13 H 11 V 16 H 1 V 13 H 5 V 4 H 2 V 2 L 5 0 Z',
+
+  // 2: Beveled top arch, 45-degree diagonal runner, and crisp flat base
+  2: 'M 2 0 H 9 L 12 3 V 7 L 4 13 H 12 V 16 H 0 V 12 L 9 5 V 3 H 3 V 5 H 0 V 2 L 2 0 Z',
+
+  // 3: Sharp top visor, indented cyber-waist, and chamfered bottom chamber
+  3: 'M 1 0 H 9 L 12 3 V 6 L 9 8 L 12 10 V 13 L 9 16 H 1 L 0 15 V 12 H 3 V 13 H 8 L 9 12 V 9 H 4 V 7 H 8 L 9 5 V 3 H 1 V 0 Z',
+
+  // 4: Angled mecha-diagonal upper arm with crisp horizontal laser bar and pillar
+  4: 'M 6 0 H 10 V 9 H 12 V 12 H 10 V 16 H 7 V 12 H 0 V 9 L 6 0 Z M 3 9 H 7 V 3.5 L 3 9 Z',
+
+  // 5: Precision flat top bar, vertical drop, and chamfered lower loop
+  5: 'M 0 0 H 11 V 3 H 3 V 6 H 9 L 12 9 V 13 L 9 16 H 1 L 0 15 V 12 H 3 V 13 H 8 L 9 12 V 9 L 8 8 H 0 V 0 Z',
+
+  // 6: Angled upper sweep descending into a beveled lower core
+  6: 'M 4 0 H 10 V 3 H 5 L 3 5 V 7 H 9 L 12 10 V 13 L 9 16 H 3 L 0 13 V 4 L 4 0 Z M 3 10 V 12 L 4 13 H 8 L 9 12 V 10 H 3 Z',
+
+  // 7: Heavy top rail with stepped inner corner and razor diagonal blade
+  7: 'M 0 0 H 12 V 4 L 6 16 H 2 L 8 4 V 3 H 3 V 5 H 0 V 0 Z',
+
+  // 8: Twin chamfered hexagonal rings with clean upper and lower windows
+  8: 'M 3 0 H 9 L 12 3 V 6 L 10 8 L 12 10 V 13 L 9 16 H 3 L 0 13 V 10 L 2 8 L 0 6 V 3 L 3 0 Z M 4 3 L 3 4 V 6 L 4 7 H 8 L 9 6 V 4 L 8 3 H 4 Z M 4 9 L 3 10 V 12 L 4 13 H 8 L 9 12 V 10 L 8 9 H 4 Z',
+
+  // 9: Beveled upper chamber with sleek angled lower sweep
+  9: 'M 3 0 H 9 L 12 3 V 12 L 8 16 H 2 V 13 H 7 L 9 11 V 9 H 3 L 0 6 V 3 L 3 0 Z M 4 3 L 3 4 V 6 H 9 V 4 L 8 3 H 4 Z',
 };
 
 interface FuturisticDigitProps {
@@ -68,15 +49,14 @@ interface FuturisticDigitProps {
 }
 
 export const FuturisticDigit: React.FC<FuturisticDigitProps> = React.memo(({ digit }) => {
-  const glyph = GLYPH_PATHS[digit] || GLYPH_PATHS[0];
+  const pathData = GLYPH_PATHS[digit] ?? GLYPH_PATHS[0];
   return (
     <svg
       className="futuristic-digit-svg"
-      viewBox="0 0 14 18"
+      viewBox="0 0 12 16"
       aria-label={String(digit)}
     >
-      <path className="glyph-main" d={glyph.main} fillRule="evenodd" />
-      <path className="glyph-accent" d={glyph.accent} />
+      <path className="glyph-main" d={pathData} fillRule="evenodd" />
     </svg>
   );
 });
