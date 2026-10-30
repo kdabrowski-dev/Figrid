@@ -43,7 +43,7 @@ body {
 }
 
 /* ============================================================================
-   TOP HUD (WITH CENTERED SCORE COUNTER)
+   TOP HUD (WITH LARGE GAME TITLE IN THE CENTER)
    ============================================================================ */
 .top-hud {
   display: grid;
@@ -53,7 +53,7 @@ body {
   background: var(--panel-bg);
   border: 2px solid var(--panel-border);
   box-shadow: 0 6px 0 #040508;
-  padding: 12px 20px;
+  padding: 14px 22px;
   position: relative;
 }
 
@@ -65,9 +65,6 @@ body {
 
 .hud-left {
   justify-content: flex-start;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
 }
 
 .hud-right {
@@ -75,17 +72,32 @@ body {
   flex-wrap: wrap;
 }
 
-.brand-title {
-  font-size: 13px;
+.hud-center-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.brand-title-big {
+  font-size: 26px;
   color: var(--accent-cyan);
-  text-shadow: 0 0 8px rgba(0, 240, 255, 0.35);
-  letter-spacing: 1px;
+  text-shadow: 0 0 14px rgba(0, 240, 255, 0.45), 0 4px 0 #000;
+  letter-spacing: 4px;
+}
+
+.brand-subtitle {
+  font-size: 8px;
+  color: #8492b4;
+  letter-spacing: 2px;
 }
 
 .progress-box {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .hud-label {
@@ -95,35 +107,57 @@ body {
 }
 
 .hud-progress-val {
-  font-size: 11px;
+  font-size: 13px;
   color: #e2e8f0;
 }
 
-/* Centered Score Block */
-.hud-center-score {
+/* ============================================================================
+   BOTTOM HORIZONTAL SCORE PANEL (CENTERED BOX, NOT FULL WIDTH)
+   ============================================================================ */
+.bottom-score-bar {
+  width: 100%;
   display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
-  min-width: 320px;
-  position: relative;
+  align-items: center;
+  padding: 4px 0 10px;
 }
 
-.score-change-row {
+.bottom-score-box {
+  position: relative;
+  min-width: 380px;
+  max-width: 520px;
+  background: var(--panel-bg);
+  border: 2px solid var(--panel-border);
+  box-shadow: 0 8px 0 #040508;
+  padding: 12px 32px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.bottom-score-top-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.bottom-score-digits-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .last-delta-pill {
   font-size: 10px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border: 1.5px solid var(--accent-cyan);
   background: rgba(10, 14, 24, 0.85);
   border-radius: 3px;
   opacity: 0;
   transform: translateY(2px);
+  white-space: nowrap;
   transition:
     opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
@@ -141,32 +175,25 @@ body {
   transform: translateY(-4px);
 }
 
-.score-main-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 16px;
-}
-
 .score-big-digits {
-  font-size: 28px;
+  font-size: 30px;
   color: var(--accent-yellow);
   text-shadow: 0 0 14px rgba(255, 234, 0, 0.35), 0 4px 0 #000;
   transition: color 0.15s ease;
   letter-spacing: 1px;
 }
 
-/* Floating +pts / -pts popups above centered score with smooth fade-out at the end */
+/* Floating +pts / -pts popups above the bottom centered score box with smooth fade-out */
 .delta-popup-layer {
   position: absolute;
-  top: -12px;
+  top: -18px;
   left: 50%;
-  width: 260px;
+  width: 300px;
   height: 55px;
   transform: translateX(-50%);
   pointer-events: none;
   overflow: visible;
+  z-index: 15;
 }
 
 .score-delta-popup {
@@ -197,34 +224,6 @@ body {
     opacity: 0;
     transform: translate(calc(-50% + var(--jitter-x, 0px)), -34px) scale(0.92);
   }
-}
-
-/* 5-stop speed spectrum bar under score */
-.spectrum-bar-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.spectrum-caption {
-  font-size: 7px;
-  color: #64748b;
-}
-
-.spectrum-gradient-bar {
-  width: 140px;
-  height: 5px;
-  border-radius: 2px;
-  background: linear-gradient(
-    90deg,
-    #38b6ff 0%,
-    #00ff9d 25%,
-    #ffea00 50%,
-    #ff5500 75%,
-    #ff00e5 100%
-  );
-  box-shadow: 0 0 6px rgba(255, 0, 229, 0.3);
 }
 
 /* 8-bit Buttons */

@@ -517,10 +517,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-shell">
-      {/* TOP HUD WITH CENTERED SCORE COUNTER */}
+      {/* TOP HUD: PROGRESS ON LEFT, BIG GAME TITLE IN CENTER, ACTIONS ON RIGHT */}
       <header className="top-hud">
         <div className="hud-side hud-left">
-          <div className="brand-title">FIGRID // 21x13</div>
           <div className="progress-box">
             <span className="hud-label">PROGRESS</span>
             <span ref={progressNodeRef} className="hud-progress-val">
@@ -529,27 +528,9 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* CENTERED SCORE COUNTER + DYNAMIC SPECTRUM FLOATING DELTAS */}
-        <div className="hud-center-score">
-          <div className="score-change-row">
-            <span className="hud-label">SCORE</span>
-            <span ref={lastDeltaBadgeRef} className="last-delta-pill">
-              +0
-            </span>
-          </div>
-
-          <div className="score-main-wrap">
-            <span ref={scoreNodeRef} className="score-big-digits">
-              0
-            </span>
-            <div ref={deltaPopupRootRef} className="delta-popup-layer" />
-          </div>
-
-          <div className="spectrum-bar-wrap" title="Speed-scaled point color spectrum">
-            <span className="spectrum-caption">SLOW</span>
-            <div className="spectrum-gradient-bar" />
-            <span className="spectrum-caption">HYPER</span>
-          </div>
+        <div className="hud-center-brand">
+          <h1 className="brand-title-big">FIGRID</h1>
+          <span className="brand-subtitle">21x13 SPEED MATRIX</span>
         </div>
 
         <div className="hud-side hud-right">
@@ -595,7 +576,7 @@ export const App: React.FC = () => {
         ))}
       </div>
 
-      {/* MAIN WORKSPACE: 21×13 BOARD ON THE LEFT + LIVE SPEED CHART ON THE RIGHT */}
+      {/* MAIN WORKSPACE: 21x13 BOARD ON THE LEFT + LIVE SPEED CHART ON THE RIGHT */}
       <main className="main-workspace">
         <section ref={boardWrapperRef} className="board-section">
           <div className="board-grid-21x13">
@@ -657,6 +638,24 @@ export const App: React.FC = () => {
           totalReinforcedCount={board.totalReinforcedCount}
         />
       </main>
+
+      {/* BOTTOM HORIZONTAL SCORE PANEL (CENTERED BOX, NOT FULL WIDTH) */}
+      <footer className="bottom-score-bar">
+        <div className="bottom-score-box">
+          <div ref={deltaPopupRootRef} className="delta-popup-layer" />
+          <div className="bottom-score-top-row">
+            <span className="hud-label">TOTAL SCORE</span>
+            <span ref={lastDeltaBadgeRef} className="last-delta-pill">
+              +0
+            </span>
+          </div>
+          <div className="bottom-score-digits-row">
+            <span ref={scoreNodeRef} className="score-big-digits">
+              0
+            </span>
+          </div>
+        </div>
+      </footer>
 
       {/* KEYBINDINGS CONFIGURATION MODAL */}
       <KeyBindingsModal
