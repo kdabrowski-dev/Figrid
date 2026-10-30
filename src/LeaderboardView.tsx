@@ -6,12 +6,13 @@ export interface LeaderboardEntry {
   nick: string; // 3 uppercase letters
   score: number;
   mode: GameMode;
+  totalTimeSec: number; // Total run time in seconds (e.g. 42.38)
   avgSpeedMs: number;
   mistakes: number;
   date: string;
 }
 
-const LEADERBOARD_STORAGE_KEY = 'figrid_leaderboard_entries_v1';
+const LEADERBOARD_STORAGE_KEY = 'figrid_leaderboard_entries_v2';
 
 export async function fetchInitialLeaderboard(): Promise<LeaderboardEntry[]> {
   let diskEntries: LeaderboardEntry[] = [];
@@ -62,7 +63,7 @@ export function saveLeaderboardToStorage(entries: LeaderboardEntry[]): void {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(entries),
   }).catch(() => {
-    // Static GitHub Pages fallback (uses localStorage + export button)
+    // Static GitHub Pages fallback
   });
 }
 
@@ -82,32 +83,13 @@ export function exportLeaderboardJsonFile(entries: LeaderboardEntry[]): void {
 
 interface LeaderboardViewProps {
   entries: LeaderboardEntry[];
-  onImportEntries: (imported: LeaderboardEntry[]) => void;
   onBackToGame: () => void;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   entries,
-  onImportEntries,
   onBackToGame,
 }) => {
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        if (Array.isArray(parsed)) {
-          onImportEntries(parsed);
-        }
-      } catch {
-        // invalid json
-      }
-    };
-    reader.readAsText(file);
-  };
-
   return (
     <section className="leaderboard-view">
       <div className="leaderboard-card">
@@ -127,15 +109,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             >
               SAVE leaderboard.json
             </button>
-            <label className="btn-arcade small cyan file-label-btn">
-              LOAD JSON
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={handleFileImport}
-                style={{ display: 'none' }}
-              />
-            </label>
             <button type="button" className="btn-arcade small" onClick={onBackToGame}>
               BACK TO GAME
             </button>
@@ -149,6 +122,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 <th>RANK</th>
                 <th>NICK</th>
                 <th>SCORE</th>
+                <th>TOTAL TIME</th>
                 <th>MODE</th>
                 <th>AVG PACE</th>
                 <th>MISTAKES</th>
@@ -158,7 +132,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             <tbody>
               {entries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty-row">
+                  <td colSpan={8} className="empty-row">
                     NO SCORES RECORDED YET
                   </td>
                 </tr>
@@ -168,6 +142,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     <td className="col-rank">#{idx + 1}</td>
                     <td className="col-nick">{entry.nick}</td>
                     <td className="col-score">{entry.score.toLocaleString('en-US')}</td>
+                    <td className="col-time">
+                      {typeof entry.totalTimeSec === 'number'
+                        ? `${entry.totalTimeSec.toFixed(2)}s`
+                        : '--'}
+                    </td>
                     <td className="col-mode">
                       <span className={`mode-pill ${entry.mode.toLowerCase()}`}>
                         {entry.mode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}

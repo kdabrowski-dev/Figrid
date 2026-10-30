@@ -24,7 +24,6 @@ import {
 import { SpeedChartPanel, SpeedSample } from './SpeedChartPanel';
 import { KeyBindingsModal } from './KeyBindingsModal';
 import { FuturisticDigit } from './FuturisticDigit';
-import { ScoreSlimeCanvas, ScoreSlimeCanvasHandle } from './ScoreSlimeCanvas';
 import {
   LeaderboardEntry,
   LeaderboardView,
@@ -85,7 +84,6 @@ export const App: React.FC = () => {
   const deltaPopupRootRef = useRef<HTMLDivElement | null>(null);
   const progressNodeRef = useRef<HTMLSpanElement | null>(null);
   const boardWrapperRef = useRef<HTMLDivElement | null>(null);
-  const slimeCanvasRef = useRef<ScoreSlimeCanvasHandle | null>(null);
   const badgeFadeTimeoutRef = useRef<number | null>(null);
 
   // Set of currently held physical key codes
@@ -109,6 +107,8 @@ export const App: React.FC = () => {
     omniTriggeredSeqKeys: new Set<string>(),
 
     // Shared scoring & telemetry state
+    runStartTime: 0,
+    runEndTime: 0,
     lastKeystrokeTime: 0,
     score: 0,
     displayedScore: 0,
@@ -193,6 +193,7 @@ export const App: React.FC = () => {
       node.classList.remove(
         'active',
         'omni-blurry-head',
+        'omni-head-also-clickable',
         'omni-branch-trail',
         'omni-available',
         'shield-cracked',
@@ -207,6 +208,7 @@ export const App: React.FC = () => {
     const branches = eng.omniBranches;
     const isAmbiguous = branches.length > 1;
     const headIndices: number[] = [];
+    const headSet = new Set<number>(branches.map((b) => b.headIndex));
     const visitedByHead = new Map<number, ReadonlySet<number>>();
     const isInitialCellPending = eng.clearedCount === 0;
 
@@ -227,7 +229,11 @@ export const App: React.FC = () => {
       const headNode = cellNodesRef.current[br.headIndex];
       if (headNode) {
         headNode.classList.add(isAmbiguous ? 'omni-blurry-head' : 'active');
-        if (br.shieldCrackedOnHead && currentBoard.cells[br.headIndex].isReinforced && eng.doneMask[br.headIndex] === 0) {
+        if (
+          br.shieldCrackedOnHead &&
+          currentBoard.cells[br.headIndex].isReinforced &&
+          eng.doneMask[br.headIndex] === 0
+        ) {
           headNode.classList.add('shield-cracked');
         }
         eng.omniVisualCells.add(br.headIndex);
@@ -244,8 +250,20 @@ export const App: React.FC = () => {
           const nNode = cellNodesRef.current[nIdx];
           if (nNode) {
             nNode.classList.add('omni-available');
+            // Special case: if `nIdx` is ALREADY a candidate head of ANOTHER branch (e.g. two identical
+            // numbers `1` are adjacent to each other, so clicking `1` made both candidate heads AND
+            // each `1` is still clickable as the next step from the other `1`), mark it with
+            // `.omni-head-also-clickable` so it shows BOTH candidate head AND clickable target rings!
+            if (headSet.has(nIdx)) {
+              nNode.classList.add('omni-head-also-clickable');
+            }
             eng.omniVisualCells.add(nIdx);
           }
+        }
+      } else if (!isInitialCellPending && needsSecondHitOnHead) {
+        // If a candidate head still has an intact shield, it is itself clickable right now!
+        if (headNode) {
+          headNode.classList.add('omni-head-also-clickable');
         }
       }
     }
@@ -291,14 +309,23 @@ export const App: React.FC = () => {
       const formatted = isPositive ? `+${deltaPoints}` : `${deltaPoints}`;
       const fullText = extraTag ? `${formatted} ${extraTag}` : formatted;
 
+      // 1. Punchy scale-impact on the main score digits + last-delta pill
+      const scoreEl = scoreNodeRef.current;
+      if (scoreEl) {
+        scoreEl.classList.remove('score-impact-pop');
+        void scoreEl.offsetWidth;
+        scoreEl.classList.add('score-impact-pop');
+      }
+
       const badge = lastDeltaBadgeRef.current;
       if (badge) {
         badge.textContent = fullText;
         badge.style.color = isPositive ? spectrumColor : '#ff2a54';
         badge.style.borderColor = isPositive ? spectrumColor : '#ff2a54';
         badge.style.boxShadow = `0 0 10px ${isPositive ? spectrumColor : 'rgba(255,42,84,0.5)'}`;
-        badge.classList.remove('fading-out');
-        badge.classList.add('visible');
+        badge.classList.remove('fading-out', 'pill-impact-pop');
+        void badge.offsetWidth;
+        badge.classList.add('visible', 'pill-impact-pop');
 
         if (badgeFadeTimeoutRef.current !== null) {
           window.clearTimeout(badgeFadeTimeoutRef.current);
@@ -369,6 +396,8 @@ export const App: React.FC = () => {
 
     const eng = engineRef.current;
     eng.currentIndex = 0;
+    eng.runStartTime = 0;
+    eng.runEndTime = 0;
     eng.lastKeystrokeTime = 0;
     eng.score = 0;
     eng.displayedScore = 0;
@@ -406,7 +435,6 @@ export const App: React.FC = () => {
     setNickCursor(0);
     setActiveBanners([]);
     setChartTick((t) => t + 1);
-    slimeCanvasRef.current?.clearSlime();
 
     if (scoreNodeRef.current) {
       scoreNodeRef.current.textContent = '0';
@@ -469,11 +497,18 @@ export const App: React.FC = () => {
     if (hasSubmittedScore) return;
     const eng = engineRef.current;
     const nick = nickLetters.join('').toUpperCase();
+    const totalDurationMs =
+      eng.runStartTime > 0 && eng.runEndTime >= eng.runStartTime
+        ? eng.runEndTime - eng.runStartTime
+        : eng.sumDeltaMs;
+    const totalTimeSec = Number((Math.max(0, totalDurationMs) / 1000).toFixed(2));
+
     const newEntry: LeaderboardEntry = {
       id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       nick,
       score: eng.score,
       mode: gameMode,
+      totalTimeSec,
       avgSpeedMs: avgSpeedMs ?? 0,
       mistakes: mistakesCount,
       date: new Date().toISOString().slice(0, 10),
@@ -612,6 +647,7 @@ export const App: React.FC = () => {
           const centerCell = board.cells[centerIdx];
 
           if (mappedDigit === centerCell.digit) {
+            if (eng.runStartTime === 0) eng.runStartTime = now;
             setHasStarted(true);
 
             // If center cell is reinforced and its shield isn't cracked yet -> crack shield first!
@@ -623,7 +659,6 @@ export const App: React.FC = () => {
 
               const intensity = computePointIntensity(shieldBreakPoints, clampedDelta);
               const specColor = getSpectrumColor(intensity);
-              slimeCanvasRef.current?.spawnSlime({ color: specColor, amount: 1.5 });
               triggerDeltaPopup(shieldBreakPoints, specColor, '[CRACKED!]');
               syncOmniVisualState(board);
               return;
@@ -660,11 +695,6 @@ export const App: React.FC = () => {
             if (scoreNodeRef.current) {
               scoreNodeRef.current.style.color = specColor;
             }
-
-            slimeCanvasRef.current?.spawnSlime({
-              color: specColor,
-              amount: isSecondShieldHit ? 2.5 : 1 + intensity * 1.4,
-            });
 
             triggerDeltaPopup(
               pointsGained,
@@ -779,7 +809,6 @@ export const App: React.FC = () => {
             scoreNodeRef.current.style.color = specColor;
           }
 
-          slimeCanvasRef.current?.spawnSlime({ color: specColor, amount: 2.6 });
           triggerDeltaPopup(pointsGained, specColor, '[SHIELD 2X!]');
 
           if (progressNodeRef.current) {
@@ -787,6 +816,7 @@ export const App: React.FC = () => {
           }
 
           if (eng.clearedCount >= TOTAL_CELLS) {
+            eng.runEndTime = now;
             eng.isFinished = true;
             setIsFinished(true);
           } else {
@@ -993,7 +1023,6 @@ export const App: React.FC = () => {
             matchedSeq.color,
             matchedSeq.isPhiEasterEgg
           );
-          slimeCanvasRef.current?.spawnSlime({ color: matchedSeq.color, amount: 4 });
         }
 
         eng.score += pointsGained;
@@ -1012,11 +1041,6 @@ export const App: React.FC = () => {
         if (scoreNodeRef.current) {
           scoreNodeRef.current.style.color = specColor;
         }
-
-        slimeCanvasRef.current?.spawnSlime({
-          color: specColor,
-          amount: 1 + intensity * 1.6,
-        });
 
         const anyUncrackedShieldNow = deduplicated.some(
           (br) => board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead
@@ -1038,6 +1062,7 @@ export const App: React.FC = () => {
         }
 
         if (eng.clearedCount >= TOTAL_CELLS && !anyUncrackedShieldNow) {
+          eng.runEndTime = now;
           eng.isFinished = true;
           setIsFinished(true);
         } else {
@@ -1068,6 +1093,7 @@ export const App: React.FC = () => {
       const currentNode = cellNodesRef.current[idx];
 
       if (mappedDigit === currentCell.digit) {
+        if (eng.runStartTime === 0) eng.runStartTime = now;
         setHasStarted(true);
         const delta =
           eng.lastKeystrokeTime === 0
@@ -1095,7 +1121,6 @@ export const App: React.FC = () => {
             currentNode.classList.add('shield-cracked');
           }
 
-          slimeCanvasRef.current?.spawnSlime({ color: specColor, amount: 1.5 });
           triggerDeltaPopup(shieldBreakPoints, specColor, '[CRACKED!]');
           return;
         }
@@ -1140,10 +1165,6 @@ export const App: React.FC = () => {
                 seqInst.pattern.color,
                 seqInst.pattern.isPhiEasterEgg
               );
-              slimeCanvasRef.current?.spawnSlime({
-                color: seqInst.pattern.color,
-                amount: 4,
-              });
 
               for (let sIdx = seqInst.startIndex; sIdx <= seqInst.endIndex; sIdx++) {
                 const sNode = cellNodesRef.current[sIdx];
@@ -1174,11 +1195,6 @@ export const App: React.FC = () => {
         if (scoreNodeRef.current) {
           scoreNodeRef.current.style.color = specColor;
         }
-
-        slimeCanvasRef.current?.spawnSlime({
-          color: specColor,
-          amount: isSecondShieldHit ? 2.6 : 1 + intensity * 1.6,
-        });
 
         let tag = '';
         if (isSecondShieldHit && completedSequenceName) {
@@ -1213,6 +1229,7 @@ export const App: React.FC = () => {
           }
           updateLinearShieldVisibility(nextIndex, board);
         } else {
+          eng.runEndTime = now;
           eng.isFinished = true;
           setIsFinished(true);
         }
@@ -1413,7 +1430,6 @@ export const App: React.FC = () => {
       {activeTab === 'LEADERBOARD' ? (
         <LeaderboardView
           entries={leaderboard}
-          onImportEntries={handleImportLeaderboard}
           onBackToGame={() => setActiveTab('GAME')}
         />
       ) : (
@@ -1489,7 +1505,12 @@ export const App: React.FC = () => {
                       <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
                     </p>
                     <p className="victory-stats">
-                      Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} | Secret
+                      Total Time:{' '}
+                      {engineRef.current.runEndTime >= engineRef.current.runStartTime &&
+                      engineRef.current.runStartTime > 0
+                        ? `${((engineRef.current.runEndTime - engineRef.current.runStartTime) / 1000).toFixed(2)}s`
+                        : '--'}{' '}
+                      | Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} | Secret
                       Sequences: {sequencesHitCount}/{board.sequences.length}
                     </p>
 
@@ -1543,10 +1564,9 @@ export const App: React.FC = () => {
             />
           </main>
 
-          {/* BOTTOM HORIZONTAL SCORE PANEL DRIPPING IN MULTI-COLORED SLIME/OOZE */}
+          {/* BOTTOM HORIZONTAL SCORE PANEL (CENTERED BOX, NOT FULL WIDTH) */}
           <footer className="bottom-score-bar">
             <div className="bottom-score-box">
-              <ScoreSlimeCanvas ref={slimeCanvasRef} />
               <div ref={deltaPopupRootRef} className="delta-popup-layer" />
               <div className="bottom-score-top-row">
                 <span className="hud-label">TOTAL SCORE</span>
