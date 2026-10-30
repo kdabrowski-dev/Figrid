@@ -5,6 +5,7 @@
 export const ROWS = 21;
 export const COLS = 13;
 export const TOTAL_CELLS = ROWS * COLS; // 273
+export const OMNI_CENTER_INDEX = Math.floor(ROWS / 2) * COLS + Math.floor(COLS / 2); // Row 10, Col 6 = 136
 export const SHIELD_REVEAL_DISTANCE = 7; // Linear mode: shield starts fading in 7 steps ahead
 export const OMNI_SHIELD_REVEAL_DISTANCE = 3; // Omni-8 mode: 2D plane radius halved (3 cells around head)
 

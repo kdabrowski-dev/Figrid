@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   TOTAL_CELLS,
+  OMNI_CENTER_INDEX,
   SHIELD_REVEAL_DISTANCE,
   GameMode,
   GeneratedBoard,
@@ -23,6 +24,13 @@ import {
 import { SpeedChartPanel, SpeedSample } from './SpeedChartPanel';
 import { KeyBindingsModal } from './KeyBindingsModal';
 import { FuturisticDigit } from './FuturisticDigit';
+import { ScoreSlimeCanvas, ScoreSlimeCanvasHandle } from './ScoreSlimeCanvas';
+import {
+  LeaderboardEntry,
+  LeaderboardView,
+  fetchInitialLeaderboard,
+  saveLeaderboardToStorage,
+} from './LeaderboardView';
 
 const BASE_POINTS = 12;
 const MIN_DELTA_MS = 50;
@@ -37,15 +45,10 @@ interface BannerPopup {
   isPhi?: boolean;
 }
 
-/**
- * Represents a single live candidate path in OMNI-8 Quantum Multi-Path Tracking.
- * When surrounding digits have identical values, multiple OmniBranches coexist
- * until subsequent keystrokes disambiguate or converge them.
- */
 interface OmniBranch {
   headIndex: number;
-  trail: number[]; // Uncommitted path cells from the fork point up to headIndex
-  visitedSet: Set<number>; // O(1) loop-prevention set for this branch
+  trail: number[];
+  visitedSet: Set<number>;
   shieldCrackedOnHead: boolean;
 }
 
@@ -53,7 +56,14 @@ export const App: React.FC = () => {
   const [board, setBoard] = useState<GeneratedBoard>(() => generateFairBoard());
   const [bindings, setBindings] = useState<KeyBindingsMap>(() => loadKeyBindings());
   const [gameMode, setGameMode] = useState<GameMode>(() => loadGameMode());
+  const [activeTab, setActiveTab] = useState<'GAME' | 'LEADERBOARD'>('GAME');
   const [isBindingsOpen, setIsBindingsOpen] = useState(false);
+
+  // Leaderboard state + 3-letter nick entry after completing the board
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [nickLetters, setNickLetters] = useState<string[]>(['A', 'A', 'A']);
+  const [nickCursor, setNickCursor] = useState<number>(0);
+  const [hasSubmittedScore, setHasSubmittedScore] = useState<boolean>(false);
 
   // Telemetry state for right panel and summary
   const [chartTick, setChartTick] = useState(0);
@@ -75,9 +85,10 @@ export const App: React.FC = () => {
   const deltaPopupRootRef = useRef<HTMLDivElement | null>(null);
   const progressNodeRef = useRef<HTMLSpanElement | null>(null);
   const boardWrapperRef = useRef<HTMLDivElement | null>(null);
+  const slimeCanvasRef = useRef<ScoreSlimeCanvasHandle | null>(null);
   const badgeFadeTimeoutRef = useRef<number | null>(null);
 
-  // Set of currently held physical key codes (prevents holding a key down without releasing it via keyup)
+  // Set of currently held physical key codes
   const pressedPhysicalKeysRef = useRef<Set<string>>(new Set());
 
   // Real-time mutable game engine state (0ms input lag)
@@ -113,6 +124,13 @@ export const App: React.FC = () => {
 
   const samplesRef = useRef<SpeedSample[]>([]);
 
+  // Load initial leaderboard from public/leaderboard.json + localStorage
+  useEffect(() => {
+    fetchInitialLeaderboard().then((entries) => {
+      setLeaderboard(entries);
+    });
+  }, []);
+
   // Reverse key -> digit lookup map for O(1) keydown checks
   const keyToDigitMapRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
@@ -125,6 +143,18 @@ export const App: React.FC = () => {
     }
     keyToDigitMapRef.current = map;
   }, [bindings]);
+
+  /**
+   * Triggers a temporary red flash across the entire board frame (`boardWrapperRef`)
+   * as well as on the active cell(s) when a mistake occurs, then automatically removes it.
+   */
+  const triggerBoardErrorFlash = useCallback(() => {
+    const wrapper = boardWrapperRef.current;
+    if (!wrapper) return;
+    wrapper.classList.remove('board-error-flash');
+    void wrapper.offsetWidth;
+    wrapper.classList.add('board-error-flash');
+  }, []);
 
   /**
    * LINEAR MODE: Updates proximity alpha for Reinforced cells within the 7-step linear window.
@@ -150,12 +180,13 @@ export const App: React.FC = () => {
    * - Single certain head (`.active`) OR multiple ambiguous quantum heads (`.omni-blurry-head`),
    * - Uncommitted quantum branch trails (`.omni-branch-trail`),
    * - Available 8-directional & wrap-around / phase-jump target cells (`.omni-available`),
-   * - 2D Planar (Chebyshev Torus) Reinforced Shield fade-in within radius 7 of active heads!
+   *   NOTE: Before the initial center cell (index 136) is cleared (`clearedCount === 0`),
+   *   surrounding cells are NOT yet available — the player MUST clear the starting center cell first!
+   * - 2D Planar Reinforced Shield fade-in within radius 3 of active heads.
    */
   const syncOmniVisualState = useCallback((currentBoard: GeneratedBoard) => {
     const eng = engineRef.current;
 
-    // 1. Clear previous transient OMNI visual classes
     for (const idx of eng.omniVisualCells) {
       const node = cellNodesRef.current[idx];
       if (!node) continue;
@@ -177,14 +208,13 @@ export const App: React.FC = () => {
     const isAmbiguous = branches.length > 1;
     const headIndices: number[] = [];
     const visitedByHead = new Map<number, ReadonlySet<number>>();
+    const isInitialCellPending = eng.clearedCount === 0;
 
-    // 2. Highlight active head(s), uncommitted branch trails, and available next neighbors
     for (let b = 0; b < branches.length; b++) {
       const br = branches[b];
       headIndices.push(br.headIndex);
       visitedByHead.set(br.headIndex, br.visitedSet);
 
-      // Trail cells (excluding head)
       for (let t = 0; t < br.trail.length - 1; t++) {
         const trailIdx = br.trail[t];
         const tNode = cellNodesRef.current[trailIdx];
@@ -194,21 +224,20 @@ export const App: React.FC = () => {
         }
       }
 
-      // Head cell
       const headNode = cellNodesRef.current[br.headIndex];
       if (headNode) {
         headNode.classList.add(isAmbiguous ? 'omni-blurry-head' : 'active');
-        if (br.shieldCrackedOnHead) {
+        if (br.shieldCrackedOnHead && currentBoard.cells[br.headIndex].isReinforced && eng.doneMask[br.headIndex] === 0) {
           headNode.classList.add('shield-cracked');
         }
         eng.omniVisualCells.add(br.headIndex);
       }
 
-      // Available next step cells (including Torus Wrap-Around & Phase-Jump rays)
-      // Only show available neighbors around heads that don't currently have an uncracked shield
+      // Only show available surrounding neighbors AFTER the first (center) cell has been cleared
+      // and when the head does not have an uncracked shield!
       const headCell = currentBoard.cells[br.headIndex];
       const needsSecondHitOnHead = headCell.isReinforced && !br.shieldCrackedOnHead;
-      if (!needsSecondHitOnHead) {
+      if (!isInitialCellPending && !needsSecondHitOnHead) {
         const neighbors = getAvailableOmniNeighbors(br.headIndex, eng.doneMask, br.visitedSet);
         for (let n = 0; n < neighbors.length; n++) {
           const nIdx = neighbors[n];
@@ -221,15 +250,18 @@ export const App: React.FC = () => {
       }
     }
 
-    // 2b. Compute blurry wrap-around ghost tiles in the outer border padding around active heads
-    const readyHeads = branches
-      .filter((br) => !(currentBoard.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead))
-      .map((br) => br.headIndex);
-    setWrapGhosts(
-      getWrapGhostProjectionsForHeads(readyHeads, currentBoard, eng.doneMask, visitedByHead)
-    );
+    if (isInitialCellPending) {
+      setWrapGhosts([]);
+    } else {
+      const readyHeads = branches
+        .filter((br) => !(currentBoard.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead))
+        .map((br) => br.headIndex);
+      setWrapGhosts(
+        getWrapGhostProjectionsForHeads(readyHeads, currentBoard, eng.doneMask, visitedByHead)
+      );
+    }
 
-    // 3. Update 2D Planar Reinforced Shield proximity alpha across all unvisited reinforced cells
+    // Update 2D Planar Reinforced Shield proximity alpha (radius 3)
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const cell = currentBoard.cells[i];
       if (!cell.isReinforced) continue;
@@ -370,8 +402,11 @@ export const App: React.FC = () => {
     setMistakesCount(0);
     setIsFinished(false);
     setHasStarted(false);
+    setHasSubmittedScore(false);
+    setNickCursor(0);
     setActiveBanners([]);
     setChartTick((t) => t + 1);
+    slimeCanvasRef.current?.clearSlime();
 
     if (scoreNodeRef.current) {
       scoreNodeRef.current.textContent = '0';
@@ -387,6 +422,7 @@ export const App: React.FC = () => {
 
   // Initialize DOM nodes when a new board or gameMode is set
   useEffect(() => {
+    if (activeTab !== 'GAME') return;
     const eng = engineRef.current;
     eng.doneMask.fill(0);
     eng.omniVisualCells.clear();
@@ -406,9 +442,10 @@ export const App: React.FC = () => {
       setWrapGhosts([]);
       updateLinearShieldVisibility(0, board);
     } else {
-      const startIdx = 0;
-      // Do NOT mark cell 0 as done until the player makes their first move!
-      // Progress starts at 0 / 273.
+      // OMNI-8 starts on the exact center cell of the 21x13 board (Row 10, Col 6 -> index 136).
+      // Progress starts at 0 / 273, and the player MUST clear this center cell first before
+      // surrounding neighbors become available!
+      const startIdx = OMNI_CENTER_INDEX;
       eng.doneMask.fill(0);
       eng.clearedCount = 0;
 
@@ -417,7 +454,7 @@ export const App: React.FC = () => {
           headIndex: startIdx,
           trail: [startIdx],
           visitedSet: new Set([startIdx]),
-          shieldCrackedOnHead: true,
+          shieldCrackedOnHead: !board.cells[startIdx].isReinforced,
         },
       ];
       if (progressNodeRef.current) {
@@ -425,7 +462,31 @@ export const App: React.FC = () => {
       }
       syncOmniVisualState(board);
     }
-  }, [board, gameMode, updateLinearShieldVisibility, syncOmniVisualState]);
+  }, [board, gameMode, activeTab, updateLinearShieldVisibility, syncOmniVisualState]);
+
+  // Submit 3-letter arcade nick to Leaderboard
+  const handleSaveScoreToLeaderboard = useCallback(() => {
+    if (hasSubmittedScore) return;
+    const eng = engineRef.current;
+    const nick = nickLetters.join('').toUpperCase();
+    const newEntry: LeaderboardEntry = {
+      id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      nick,
+      score: eng.score,
+      mode: gameMode,
+      avgSpeedMs: avgSpeedMs ?? 0,
+      mistakes: mistakesCount,
+      date: new Date().toISOString().slice(0, 10),
+    };
+
+    setLeaderboard((prev) => {
+      const updated = [...prev, newEntry].sort((a, b) => b.score - a.score);
+      saveLeaderboardToStorage(updated);
+      return updated;
+    });
+    setHasSubmittedScore(true);
+    setActiveTab('LEADERBOARD');
+  }, [hasSubmittedScore, nickLetters, gameMode, avgSpeedMs, mistakesCount]);
 
   // Smooth arcade score counter interpolation loop
   useEffect(() => {
@@ -446,7 +507,7 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Zero-Lag Global Keydown + Keyup Engine (supports both LINEAR and OMNI-8 modes)
+  // Zero-Lag Global Keydown + Keyup Engine
   useEffect(() => {
     const handleKeyUp = (e: KeyboardEvent) => {
       const physCode = e.code || e.key.toLowerCase();
@@ -458,7 +519,43 @@ export const App: React.FC = () => {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isBindingsOpen) return;
+      if (isBindingsOpen || activeTab !== 'GAME') return;
+
+      // If board is finished, handle 3-letter Arcade Nick input directly from keyboard!
+      if (engineRef.current.isFinished && !hasSubmittedScore) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          startNewGame();
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleSaveScoreToLeaderboard();
+          return;
+        }
+        if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setNickCursor((c) => Math.max(0, c - 1));
+          return;
+        }
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          setNickCursor((c) => Math.min(2, c + 1));
+          return;
+        }
+        if (/^[a-zA-Z0-9]$/.test(e.key)) {
+          e.preventDefault();
+          const char = e.key.toUpperCase();
+          setNickLetters((prev) => {
+            const copy = [...prev];
+            copy[nickCursor] = char;
+            return copy;
+          });
+          setNickCursor((c) => Math.min(2, c + 1));
+          return;
+        }
+        return;
+      }
 
       const physCode = e.code || e.key.toLowerCase();
 
@@ -496,7 +593,7 @@ export const App: React.FC = () => {
       const now = performance.now();
 
       // ======================================================================
-      // MODE A: OMNI-8 (8-Way Torus Wrap + Phase Jump + Quantum Path Tracking)
+      // MODE A: OMNI-8 (Starts at Center Cell 136 -> Then 8-Way Free Movement)
       // ======================================================================
       if (gameMode === 'OMNI') {
         const delta =
@@ -506,6 +603,126 @@ export const App: React.FC = () => {
         const clampedDelta = Math.max(MIN_DELTA_MS, delta);
         const speedBonus =
           delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
+
+        // SPECIAL CASE 0: First cell on the board (center index 136) has NOT been cleared yet!
+        // The player MUST press the center cell's digit first (no other cells can be clicked yet).
+        if (eng.clearedCount === 0) {
+          const startBranch = eng.omniBranches[0];
+          const centerIdx = startBranch.headIndex;
+          const centerCell = board.cells[centerIdx];
+
+          if (mappedDigit === centerCell.digit) {
+            setHasStarted(true);
+
+            // If center cell is reinforced and its shield isn't cracked yet -> crack shield first!
+            if (centerCell.isReinforced && !startBranch.shieldCrackedOnHead) {
+              startBranch.shieldCrackedOnHead = true;
+              const shieldBreakPoints = BASE_POINTS + speedBonus;
+              eng.score += shieldBreakPoints;
+              eng.lastKeystrokeTime = now;
+
+              const intensity = computePointIntensity(shieldBreakPoints, clampedDelta);
+              const specColor = getSpectrumColor(intensity);
+              slimeCanvasRef.current?.spawnSlime({ color: specColor, amount: 1.5 });
+              triggerDeltaPopup(shieldBreakPoints, specColor, '[CRACKED!]');
+              syncOmniVisualState(board);
+              return;
+            }
+
+            // Otherwise, clear the starting center cell! Now all 8 neighbors unlock!
+            const isSecondShieldHit = centerCell.isReinforced;
+            const multiplier = isSecondShieldHit ? 2 : 1;
+            const pointsGained = (BASE_POINTS + speedBonus) * multiplier;
+
+            if (isSecondShieldHit) {
+              eng.reinforcedHit += 1;
+              setReinforcedHitCount(eng.reinforcedHit);
+            }
+
+            eng.doneMask[centerIdx] = 1;
+            eng.clearedCount = 1;
+            eng.score += pointsGained;
+            eng.lastKeystrokeTime = now;
+            eng.totalKeystrokes += 1;
+            eng.sumDeltaMs += delta;
+
+            eng.omniRecentDigits.push(mappedDigit);
+            eng.omniRecentTimestamps.push(now);
+
+            const currentKps = 1000 / Math.max(40, delta);
+            if (currentKps > eng.peakKps) {
+              eng.peakKps = currentKps;
+              setPeakKps(currentKps);
+            }
+
+            const intensity = computePointIntensity(pointsGained, clampedDelta);
+            const specColor = getSpectrumColor(intensity);
+            if (scoreNodeRef.current) {
+              scoreNodeRef.current.style.color = specColor;
+            }
+
+            slimeCanvasRef.current?.spawnSlime({
+              color: specColor,
+              amount: isSecondShieldHit ? 2.5 : 1 + intensity * 1.4,
+            });
+
+            triggerDeltaPopup(
+              pointsGained,
+              specColor,
+              isSecondShieldHit ? '[SHIELD 2X!]' : undefined
+            );
+
+            if (progressNodeRef.current) {
+              progressNodeRef.current.textContent = `1 / ${TOTAL_CELLS}`;
+            }
+
+            syncOmniVisualState(board);
+
+            const roundedDelta = Math.round(delta);
+            samplesRef.current.push({
+              step: 1,
+              deltaMs: roundedDelta,
+              kps: Number(currentKps.toFixed(2)),
+              points: pointsGained,
+              isReinforced2x: isSecondShieldHit,
+            });
+            setLastSpeedMs(roundedDelta);
+            setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+            setChartTick((t) => t + 1);
+            return;
+          } else {
+            // Wrong key on the starting center cell -> Mistake + Full-board red flash!
+            const errDelta =
+              eng.lastKeystrokeTime === 0
+                ? MAX_BONUS_DELTA_MS
+                : Math.max(MIN_DELTA_MS, now - eng.lastKeystrokeTime);
+            const speedPenaltyFactor = Math.round(3200 / errDelta);
+            const penalty = Math.round(BASE_POINTS * 2 + speedPenaltyFactor * 2.2);
+
+            eng.score = Math.max(0, eng.score - penalty);
+            eng.lastKeystrokeTime = now;
+            eng.mistakes += 1;
+            setMistakesCount(eng.mistakes);
+
+            triggerBoardErrorFlash();
+            const hNode = cellNodesRef.current[centerIdx];
+            if (hNode) {
+              hNode.classList.remove('error');
+              void hNode.offsetWidth;
+              hNode.classList.add('error');
+              hNode.addEventListener(
+                'animationend',
+                () => {
+                  hNode.classList.remove('error');
+                },
+                { once: true }
+              );
+            }
+
+            triggerDeltaPopup(-penalty, '#ff2a54', 'MISS!');
+            return;
+          }
+        }
 
         // 1. Check if any active branch head is currently waiting for its 2nd Reinforced Shield hit!
         const shieldHeadsMatching = eng.omniBranches.filter((br) => {
@@ -519,13 +736,29 @@ export const App: React.FC = () => {
 
         if (shieldHeadsMatching.length > 0) {
           setHasStarted(true);
-          // Second hit on reinforced head(s)! Mark shield as cracked/cleared on those branches
           for (const br of shieldHeadsMatching) {
             br.shieldCrackedOnHead = true;
           }
           eng.omniBranches = shieldHeadsMatching;
 
-          // If all surviving branches now have cracked shields, check if we can collapse/commit
+          // If only 1 branch remains after second shield hit, commit its trail to doneMask!
+          if (eng.omniBranches.length === 1) {
+            const winner = eng.omniBranches[0];
+            for (const cellIdx of winner.trail) {
+              if (eng.doneMask[cellIdx] === 0) {
+                eng.doneMask[cellIdx] = 1;
+                eng.clearedCount += 1;
+                const cNode = cellNodesRef.current[cellIdx];
+                if (cNode) {
+                  cNode.className = 'cell done';
+                  cNode.style.setProperty('--shield-alpha', '0');
+                }
+              }
+            }
+            winner.trail = [winner.headIndex];
+            winner.visitedSet = new Set([winner.headIndex]);
+          }
+
           const pointsGained = (BASE_POINTS + speedBonus) * 2;
           eng.score += pointsGained;
           eng.lastKeystrokeTime = now;
@@ -546,8 +779,19 @@ export const App: React.FC = () => {
             scoreNodeRef.current.style.color = specColor;
           }
 
+          slimeCanvasRef.current?.spawnSlime({ color: specColor, amount: 2.6 });
           triggerDeltaPopup(pointsGained, specColor, '[SHIELD 2X!]');
-          syncOmniVisualState(board);
+
+          if (progressNodeRef.current) {
+            progressNodeRef.current.textContent = `${eng.clearedCount} / ${TOTAL_CELLS}`;
+          }
+
+          if (eng.clearedCount >= TOTAL_CELLS) {
+            eng.isFinished = true;
+            setIsFinished(true);
+          } else {
+            syncOmniVisualState(board);
+          }
 
           const roundedDelta = Math.round(delta);
           samplesRef.current.push({
@@ -563,27 +807,14 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 2. Otherwise, expand all branches whose head is ready to move to neighbors matching `mappedDigit`
+        // 2. Expand all branches whose head is ready to move to neighbors matching `mappedDigit`
         const nextBranches: OmniBranch[] = [];
-        const isInitialUnpressedStart = eng.clearedCount === 0 && eng.omniBranches.length === 1 && eng.omniBranches[0].trail.length === 1;
 
         for (let b = 0; b < eng.omniBranches.length; b++) {
           const br = eng.omniBranches[b];
           const headCell = board.cells[br.headIndex];
-          // If this branch's head still has an uncracked shield, it cannot step to neighbors yet
           if (headCell.isReinforced && !br.shieldCrackedOnHead) {
             continue;
-          }
-
-          // At the very start of the board (progress 0/273), if the player presses the digit
-          // of the starting head (index 0) itself, we also allow claiming index 0 directly!
-          if (isInitialUnpressedStart && headCell.digit === mappedDigit) {
-            nextBranches.push({
-              headIndex: br.headIndex,
-              trail: [br.headIndex],
-              visitedSet: new Set([br.headIndex]),
-              shieldCrackedOnHead: !headCell.isReinforced,
-            });
           }
 
           const neighbors = getAvailableOmniNeighbors(
@@ -595,15 +826,12 @@ export const App: React.FC = () => {
           for (let n = 0; n < neighbors.length; n++) {
             const nIdx = neighbors[n];
             if (board.cells[nIdx].digit === mappedDigit) {
-              // If this was the very first move and the player stepped to a neighbor instead of typing cell 0,
-              // cell 0 remains unvisited so the player can clear it later, and the neighbor becomes the 1st cleared cell!
-              const baseTrail = isInitialUnpressedStart ? [] : br.trail;
-              const baseVisited = isInitialUnpressedStart ? new Set<number>() : new Set(br.visitedSet);
-              baseVisited.add(nIdx);
+              const nextVisited = new Set(br.visitedSet);
+              nextVisited.add(nIdx);
               nextBranches.push({
                 headIndex: nIdx,
-                trail: [...baseTrail, nIdx],
-                visitedSet: baseVisited,
+                trail: [...br.trail, nIdx],
+                visitedSet: nextVisited,
                 shieldCrackedOnHead: !board.cells[nIdx].isReinforced,
               });
             }
@@ -624,6 +852,7 @@ export const App: React.FC = () => {
           eng.mistakes += 1;
           setMistakesCount(eng.mistakes);
 
+          triggerBoardErrorFlash();
           for (const br of eng.omniBranches) {
             const hNode = cellNodesRef.current[br.headIndex];
             if (hNode) {
@@ -644,9 +873,7 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 3. LOOP & CONVERGENCE PROTECTION (Diamond / Same-Head Deduplication):
-        // If multiple branches land on the exact same `headIndex`, keep only the best one
-        // (the one whose trail leaves the most free immediate neighbors around `headIndex`)
+        // 3. LOOP & CONVERGENCE PROTECTION (Same-Head Deduplication)
         const byHead = new Map<number, OmniBranch>();
         for (const cand of nextBranches) {
           const existing = byHead.get(cand.headIndex);
@@ -671,8 +898,6 @@ export const App: React.FC = () => {
 
         let deduplicated = Array.from(byHead.values());
 
-        // Anti-Dead-End Tie-Breaker: if multiple branches exist and some have >0 free neighbors
-        // while others are completely dead-ended (0 immediate free neighbors), prefer open branches
         if (deduplicated.length > 1) {
           const openBranches = deduplicated.filter(
             (br) =>
@@ -681,16 +906,22 @@ export const App: React.FC = () => {
           if (openBranches.length > 0) {
             deduplicated = openBranches;
           }
-          // Cap max simultaneous branches to 6 to prevent combinatorial explosion
           if (deduplicated.length > 6) {
             deduplicated = deduplicated.slice(0, 6);
           }
         }
 
-        // 4. Commit common prefix (or entire trail if only 1 unique branch remains!) to `doneMask`
+        // 4. Commit resolved cells to `doneMask` (Wait to mark reinforced head until 2nd hit!)
         if (deduplicated.length === 1) {
           const winner = deduplicated[0];
-          for (const cellIdx of winner.trail) {
+          const headNeedsSecondHit =
+            board.cells[winner.headIndex].isReinforced && !winner.shieldCrackedOnHead;
+          const commitLimit = headNeedsSecondHit
+            ? winner.trail.length - 1
+            : winner.trail.length;
+
+          for (let i = 0; i < commitLimit; i++) {
+            const cellIdx = winner.trail[i];
             if (eng.doneMask[cellIdx] === 0) {
               eng.doneMask[cellIdx] = 1;
               eng.clearedCount += 1;
@@ -704,7 +935,6 @@ export const App: React.FC = () => {
           winner.trail = [winner.headIndex];
           winner.visitedSet = new Set([winner.headIndex]);
         } else {
-          // Even when multiple branches remain, any shared prefix across all branches can be committed
           const minTrailLen = Math.min(...deduplicated.map((b) => b.trail.length));
           let commonPrefixCount = 0;
           for (let i = 0; i < minTrailLen - 1; i++) {
@@ -734,7 +964,6 @@ export const App: React.FC = () => {
         eng.omniBranches = deduplicated;
         setHasStarted(true);
 
-        // Track typed digit stream for hidden sequence detection in OMNI mode
         eng.omniRecentDigits.push(mappedDigit);
         eng.omniRecentTimestamps.push(now);
         if (eng.omniRecentDigits.length > 16) {
@@ -764,6 +993,7 @@ export const App: React.FC = () => {
             matchedSeq.color,
             matchedSeq.isPhiEasterEgg
           );
+          slimeCanvasRef.current?.spawnSlime({ color: matchedSeq.color, amount: 4 });
         }
 
         eng.score += pointsGained;
@@ -782,6 +1012,11 @@ export const App: React.FC = () => {
         if (scoreNodeRef.current) {
           scoreNodeRef.current.style.color = specColor;
         }
+
+        slimeCanvasRef.current?.spawnSlime({
+          color: specColor,
+          amount: 1 + intensity * 1.6,
+        });
 
         const anyUncrackedShieldNow = deduplicated.some(
           (br) => board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead
@@ -860,6 +1095,7 @@ export const App: React.FC = () => {
             currentNode.classList.add('shield-cracked');
           }
 
+          slimeCanvasRef.current?.spawnSlime({ color: specColor, amount: 1.5 });
           triggerDeltaPopup(shieldBreakPoints, specColor, '[CRACKED!]');
           return;
         }
@@ -904,6 +1140,10 @@ export const App: React.FC = () => {
                 seqInst.pattern.color,
                 seqInst.pattern.isPhiEasterEgg
               );
+              slimeCanvasRef.current?.spawnSlime({
+                color: seqInst.pattern.color,
+                amount: 4,
+              });
 
               for (let sIdx = seqInst.startIndex; sIdx <= seqInst.endIndex; sIdx++) {
                 const sNode = cellNodesRef.current[sIdx];
@@ -934,6 +1174,11 @@ export const App: React.FC = () => {
         if (scoreNodeRef.current) {
           scoreNodeRef.current.style.color = specColor;
         }
+
+        slimeCanvasRef.current?.spawnSlime({
+          color: specColor,
+          amount: isSecondShieldHit ? 2.6 : 1 + intensity * 1.6,
+        });
 
         let tag = '';
         if (isSecondShieldHit && completedSequenceName) {
@@ -999,6 +1244,7 @@ export const App: React.FC = () => {
         eng.mistakes += 1;
         setMistakesCount(eng.mistakes);
 
+        triggerBoardErrorFlash();
         if (currentNode) {
           currentNode.classList.remove('error');
           void currentNode.offsetWidth;
@@ -1027,8 +1273,13 @@ export const App: React.FC = () => {
   }, [
     board,
     gameMode,
+    activeTab,
     isBindingsOpen,
+    hasSubmittedScore,
+    nickCursor,
     startNewGame,
+    handleSaveScoreToLeaderboard,
+    triggerBoardErrorFlash,
     triggerDeltaPopup,
     triggerSequenceBanner,
     updateLinearShieldVisibility,
@@ -1053,9 +1304,21 @@ export const App: React.FC = () => {
     startNewGame();
   };
 
+  const handleImportLeaderboard = (imported: LeaderboardEntry[]) => {
+    setLeaderboard((prev) => {
+      const byId = new Map<string, LeaderboardEntry>();
+      for (const e of [...prev, ...imported]) {
+        if (e && e.id) byId.set(e.id, e);
+      }
+      const merged = Array.from(byId.values()).sort((a, b) => b.score - a.score);
+      saveLeaderboardToStorage(merged);
+      return merged;
+    });
+  };
+
   return (
     <div className="app-shell">
-      {/* TOP HUD: PROGRESS & MODE ON LEFT, BIG GAME TITLE IN CENTER, ACTIONS ON RIGHT */}
+      {/* TOP HUD: PROGRESS & MODE ON LEFT, BIG GAME TITLE IN CENTER, TABS & ACTIONS ON RIGHT */}
       <header className="top-hud">
         <div className="hud-side hud-left">
           <div className="progress-box">
@@ -1096,6 +1359,16 @@ export const App: React.FC = () => {
         <div className="hud-side hud-right">
           <button
             type="button"
+            className={`btn-arcade ${activeTab === 'LEADERBOARD' ? 'gold' : ''}`}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setActiveTab((t) => (t === 'LEADERBOARD' ? 'GAME' : 'LEADERBOARD'));
+            }}
+          >
+            {activeTab === 'LEADERBOARD' ? 'PLAY GAME' : 'LEADERBOARD'}
+          </button>
+          <button
+            type="button"
             className="btn-arcade cyan"
             onClick={(e) => {
               e.currentTarget.blur();
@@ -1109,6 +1382,7 @@ export const App: React.FC = () => {
             className="btn-arcade"
             onClick={(e) => {
               e.currentTarget.blur();
+              setActiveTab('GAME');
               startNewGame();
             }}
           >
@@ -1136,120 +1410,159 @@ export const App: React.FC = () => {
         ))}
       </div>
 
-      {/* MAIN WORKSPACE: 21x13 BOARD ON THE LEFT + LIVE SPEED CHART ON THE RIGHT */}
-      <main className="main-workspace">
-        <section ref={boardWrapperRef} className="board-section">
-          <div className="board-grid-stage">
-            {/* BLURRY WRAP-AROUND GHOST TILES IN THE OUTER PADDING RING (OMNI-8 MODE) */}
-            {gameMode === 'OMNI' &&
-              wrapGhosts.map((g) => (
-                <div
-                  key={g.key}
-                  className="cell omni-wrap-ghost"
-                  style={{
-                    left: `${g.ghostCol * 38}px`,
-                    top: `${g.ghostRow * 32}px`,
-                  }}
-                >
-                  {g.isReinforced && (
-                    <svg
-                      className="cell-shield-svg ghost-shield"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
+      {activeTab === 'LEADERBOARD' ? (
+        <LeaderboardView
+          entries={leaderboard}
+          onImportEntries={handleImportLeaderboard}
+          onBackToGame={() => setActiveTab('GAME')}
+        />
+      ) : (
+        <>
+          {/* MAIN WORKSPACE: 21x13 BOARD ON THE LEFT + LIVE SPEED CHART ON THE RIGHT */}
+          <main className="main-workspace">
+            <section ref={boardWrapperRef} className="board-section">
+              <div className="board-grid-stage">
+                {/* BLURRY WRAP-AROUND GHOST TILES IN THE OUTER PADDING RING (OMNI-8 MODE) */}
+                {gameMode === 'OMNI' &&
+                  wrapGhosts.map((g) => (
+                    <div
+                      key={g.key}
+                      className="cell omni-wrap-ghost"
+                      style={{
+                        left: `${g.ghostCol * 38}px`,
+                        top: `${g.ghostRow * 32}px`,
+                      }}
                     >
-                      <path
-                        className="shield-outline-path"
-                        d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                      />
-                    </svg>
-                  )}
-                  <span className="cell-digit">
-                    <FuturisticDigit digit={g.digit} />
-                  </span>
-                </div>
-              ))}
+                      {g.isReinforced && (
+                        <svg
+                          className="cell-shield-svg ghost-shield"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            className="shield-outline-path"
+                            d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                          />
+                        </svg>
+                      )}
+                      <span className="cell-digit">
+                        <FuturisticDigit digit={g.digit} />
+                      </span>
+                    </div>
+                  ))}
 
-            <div className="board-grid-21x13">
-              {board.cells.map((cell, idx) => (
-                <div
-                  key={idx}
-                  ref={(el) => {
-                    cellNodesRef.current[idx] = el;
-                  }}
-                  className="cell"
-                >
-                  {cell.isReinforced && (
-                    <svg
-                      className="cell-shield-svg"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
+                <div className="board-grid-21x13">
+                  {board.cells.map((cell, idx) => (
+                    <div
+                      key={idx}
+                      ref={(el) => {
+                        cellNodesRef.current[idx] = el;
+                      }}
+                      className="cell"
                     >
-                      <path
-                        className="shield-outline-path"
-                        d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                      />
-                    </svg>
-                  )}
-                  <span className="cell-digit">
-                    <FuturisticDigit digit={cell.digit} />
-                  </span>
+                      {cell.isReinforced && (
+                        <svg
+                          className="cell-shield-svg"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            className="shield-outline-path"
+                            d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                          />
+                        </svg>
+                      )}
+                      <span className="cell-digit">
+                        <FuturisticDigit digit={cell.digit} />
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {isFinished && (
-            <div className="victory-overlay">
-              <div className="victory-card">
-                <h2>BOARD CLEARED!</h2>
-                <p className="victory-score">
-                  FINAL SCORE: <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
-                </p>
-                <p className="victory-stats">
-                  Avg Pace: {avgSpeedMs ?? '--'} ms/key | Secret Sequences:{' '}
-                  {sequencesHitCount}/{board.sequences.length} | 2x Shields:{' '}
-                  {reinforcedHitCount}/{board.totalReinforcedCount}
-                </p>
-                <button type="button" className="btn-arcade gold" onClick={startNewGame}>
-                  PLAY AGAIN [ESC]
-                </button>
+              {isFinished && (
+                <div className="victory-overlay">
+                  <div className="victory-card">
+                    <h2>BOARD CLEARED!</h2>
+                    <p className="victory-score">
+                      FINAL SCORE:{' '}
+                      <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
+                    </p>
+                    <p className="victory-stats">
+                      Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} | Secret
+                      Sequences: {sequencesHitCount}/{board.sequences.length}
+                    </p>
+
+                    {!hasSubmittedScore ? (
+                      <div className="nick-entry-box">
+                        <span className="nick-prompt">ENTER YOUR 3-LETTER INITIALS:</span>
+                        <div className="nick-slots">
+                          {nickLetters.map((char, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              className={`nick-slot ${nickCursor === idx ? 'active' : ''}`}
+                              onClick={() => setNickCursor(idx)}
+                            >
+                              {char}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-arcade gold"
+                          onClick={handleSaveScoreToLeaderboard}
+                        >
+                          SAVE TO LEADERBOARD [ENTER]
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="nick-saved-msg">SCORE SAVED TO LEADERBOARD!</p>
+                    )}
+
+                    <button type="button" className="btn-arcade cyan" onClick={startNewGame}>
+                      PLAY AGAIN [ESC]
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* RIGHT PANEL: LIVE SPEED CHART */}
+            <SpeedChartPanel
+              samplesRef={samplesRef}
+              renderTick={chartTick}
+              lastSpeedMs={lastSpeedMs}
+              avgSpeedMs={avgSpeedMs}
+              peakKps={peakKps}
+              mistakesCount={mistakesCount}
+              sequencesHitCount={sequencesHitCount}
+              totalSequencesCount={board.sequences.length}
+              reinforcedHitCount={reinforcedHitCount}
+              totalReinforcedCount={board.totalReinforcedCount}
+            />
+          </main>
+
+          {/* BOTTOM HORIZONTAL SCORE PANEL DRIPPING IN MULTI-COLORED SLIME/OOZE */}
+          <footer className="bottom-score-bar">
+            <div className="bottom-score-box">
+              <ScoreSlimeCanvas ref={slimeCanvasRef} />
+              <div ref={deltaPopupRootRef} className="delta-popup-layer" />
+              <div className="bottom-score-top-row">
+                <span className="hud-label">TOTAL SCORE</span>
+                <span ref={lastDeltaBadgeRef} className="last-delta-pill">
+                  +0
+                </span>
+              </div>
+              <div className="bottom-score-digits-row">
+                <span ref={scoreNodeRef} className="score-big-digits">
+                  0
+                </span>
               </div>
             </div>
-          )}
-        </section>
-
-        {/* RIGHT PANEL: LIVE SPEED CHART */}
-        <SpeedChartPanel
-          samplesRef={samplesRef}
-          renderTick={chartTick}
-          lastSpeedMs={lastSpeedMs}
-          avgSpeedMs={avgSpeedMs}
-          peakKps={peakKps}
-          mistakesCount={mistakesCount}
-          sequencesHitCount={sequencesHitCount}
-          totalSequencesCount={board.sequences.length}
-          reinforcedHitCount={reinforcedHitCount}
-          totalReinforcedCount={board.totalReinforcedCount}
-        />
-      </main>
-
-      {/* BOTTOM HORIZONTAL SCORE PANEL (CENTERED BOX, NOT FULL WIDTH) */}
-      <footer className="bottom-score-bar">
-        <div className="bottom-score-box">
-          <div ref={deltaPopupRootRef} className="delta-popup-layer" />
-          <div className="bottom-score-top-row">
-            <span className="hud-label">TOTAL SCORE</span>
-            <span ref={lastDeltaBadgeRef} className="last-delta-pill">
-              +0
-            </span>
-          </div>
-          <div className="bottom-score-digits-row">
-            <span ref={scoreNodeRef} className="score-big-digits">
-              0
-            </span>
-          </div>
-        </div>
-      </footer>
+          </footer>
+        </>
+      )}
 
       {/* SETTINGS & KEYBINDINGS MODAL */}
       <KeyBindingsModal
