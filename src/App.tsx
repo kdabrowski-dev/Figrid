@@ -2,17 +2,25 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   TOTAL_CELLS,
   SHIELD_REVEAL_DISTANCE,
+  GameMode,
   GeneratedBoard,
   generateFairBoard,
   getShieldProximityAlpha,
+  getOmni2DShieldAlpha,
+  getAvailableOmniNeighbors,
+  countImmediateFreeNeighbors,
+  detectOmniSequenceMatch,
   getSpectrumColor,
   computePointIntensity,
   KeyBindingsMap,
   loadKeyBindings,
   saveKeyBindings,
+  loadGameMode,
+  saveGameMode,
 } from './gameEngine';
 import { SpeedChartPanel, SpeedSample } from './SpeedChartPanel';
 import { KeyBindingsModal } from './KeyBindingsModal';
+import { FuturisticDigit } from './FuturisticDigit';
 
 const BASE_POINTS = 12;
 const MIN_DELTA_MS = 50;
@@ -27,9 +35,22 @@ interface BannerPopup {
   isPhi?: boolean;
 }
 
+/**
+ * Represents a single live candidate path in OMNI-8 Quantum Multi-Path Tracking.
+ * When surrounding digits have identical values, multiple OmniBranches coexist
+ * until subsequent keystrokes disambiguate or converge them.
+ */
+interface OmniBranch {
+  headIndex: number;
+  trail: number[]; // Uncommitted path cells from the fork point up to headIndex
+  visitedSet: Set<number>; // O(1) loop-prevention set for this branch
+  shieldCrackedOnHead: boolean;
+}
+
 export const App: React.FC = () => {
   const [board, setBoard] = useState<GeneratedBoard>(() => generateFairBoard());
   const [bindings, setBindings] = useState<KeyBindingsMap>(() => loadKeyBindings());
+  const [gameMode, setGameMode] = useState<GameMode>(() => loadGameMode());
   const [isBindingsOpen, setIsBindingsOpen] = useState(false);
 
   // Telemetry state for right panel and summary
@@ -56,13 +77,25 @@ export const App: React.FC = () => {
 
   // Real-time mutable game engine state (0ms input lag)
   const engineRef = useRef({
+    // LINEAR mode state
     currentIndex: 0,
-    lastKeystrokeTime: 0,
-    score: 0,
-    displayedScore: 0,
     shieldIntactOnCurrent: false,
     cellHitTimestamps: new Float64Array(TOTAL_CELLS),
     cellFirstHitTimestamps: new Float64Array(TOTAL_CELLS),
+
+    // OMNI-8 mode state
+    doneMask: new Uint8Array(TOTAL_CELLS),
+    clearedCount: 0,
+    omniBranches: [] as OmniBranch[],
+    omniVisualCells: new Set<number>(),
+    omniRecentDigits: [] as number[],
+    omniRecentTimestamps: [] as number[],
+    omniTriggeredSeqKeys: new Set<string>(),
+
+    // Shared scoring & telemetry state
+    lastKeystrokeTime: 0,
+    score: 0,
+    displayedScore: 0,
     totalKeystrokes: 0,
     sumDeltaMs: 0,
     peakKps: 0,
@@ -88,11 +121,9 @@ export const App: React.FC = () => {
   }, [bindings]);
 
   /**
-   * Updates the proximity alpha factor for Reinforced cells within the 7-step lookahead window.
-   * Cells beyond currentIndex + 7 have --shield-alpha = 0 (completely invisible).
-   * As the player gets closer (distance 7 down to 1), --shield-alpha smoothly increases up to 1.
+   * LINEAR MODE: Updates proximity alpha for Reinforced cells within the 7-step linear window.
    */
-  const updateLookaheadShieldVisibility = useCallback(
+  const updateLinearShieldVisibility = useCallback(
     (newCurrentIndex: number, currentBoard: GeneratedBoard) => {
       const maxIdx = Math.min(TOTAL_CELLS - 1, newCurrentIndex + SHIELD_REVEAL_DISTANCE);
       for (let i = newCurrentIndex; i <= maxIdx; i++) {
@@ -107,6 +138,102 @@ export const App: React.FC = () => {
     },
     []
   );
+
+  /**
+   * OMNI-8 MODE: Updates DOM classes for:
+   * - Single certain head (`.active`) OR multiple ambiguous quantum heads (`.omni-blurry-head`),
+   * - Uncommitted quantum branch trails (`.omni-branch-trail`),
+   * - Available 8-directional & wrap-around / phase-jump target cells (`.omni-available`),
+   * - 2D Planar (Chebyshev Torus) Reinforced Shield fade-in within radius 7 of active heads!
+   */
+  const syncOmniVisualState = useCallback((currentBoard: GeneratedBoard) => {
+    const eng = engineRef.current;
+
+    // 1. Clear previous transient OMNI visual classes
+    for (const idx of eng.omniVisualCells) {
+      const node = cellNodesRef.current[idx];
+      if (!node) continue;
+      node.classList.remove(
+        'active',
+        'omni-blurry-head',
+        'omni-branch-trail',
+        'omni-available',
+        'shield-cracked'
+      );
+      if (eng.doneMask[idx] === 1) {
+        node.classList.add('done');
+      }
+    }
+    eng.omniVisualCells.clear();
+
+    const branches = eng.omniBranches;
+    const isAmbiguous = branches.length > 1;
+    const headIndices: number[] = [];
+
+    // 2. Highlight active head(s), uncommitted branch trails, and available next neighbors
+    for (let b = 0; b < branches.length; b++) {
+      const br = branches[b];
+      headIndices.push(br.headIndex);
+
+      // Trail cells (excluding head)
+      for (let t = 0; t < br.trail.length - 1; t++) {
+        const trailIdx = br.trail[t];
+        const tNode = cellNodesRef.current[trailIdx];
+        if (tNode) {
+          tNode.classList.add('omni-branch-trail');
+          eng.omniVisualCells.add(trailIdx);
+        }
+      }
+
+      // Head cell
+      const headNode = cellNodesRef.current[br.headIndex];
+      if (headNode) {
+        headNode.classList.add(isAmbiguous ? 'omni-blurry-head' : 'active');
+        if (br.shieldCrackedOnHead) {
+          headNode.classList.add('shield-cracked');
+        }
+        eng.omniVisualCells.add(br.headIndex);
+      }
+
+      // Available next step cells (including Torus Wrap-Around & Phase-Jump rays)
+      // Only show available neighbors around heads that don't currently have an uncracked shield
+      const headCell = currentBoard.cells[br.headIndex];
+      const needsSecondHitOnHead = headCell.isReinforced && !br.shieldCrackedOnHead;
+      if (!needsSecondHitOnHead) {
+        const neighbors = getAvailableOmniNeighbors(br.headIndex, eng.doneMask, br.visitedSet);
+        for (let n = 0; n < neighbors.length; n++) {
+          const nIdx = neighbors[n];
+          const nNode = cellNodesRef.current[nIdx];
+          if (nNode) {
+            nNode.classList.add('omni-available');
+            eng.omniVisualCells.add(nIdx);
+          }
+        }
+      }
+    }
+
+    // 3. Update 2D Planar Reinforced Shield proximity alpha across all unvisited reinforced cells
+    for (let i = 0; i < TOTAL_CELLS; i++) {
+      const cell = currentBoard.cells[i];
+      if (!cell.isReinforced) continue;
+      const node = cellNodesRef.current[i];
+      if (!node) continue;
+
+      if (eng.doneMask[i] === 1) {
+        node.style.setProperty('--shield-alpha', '0');
+        node.classList.remove('shield-approaching');
+        continue;
+      }
+
+      const alpha2D = getOmni2DShieldAlpha(i, headIndices);
+      node.style.setProperty('--shield-alpha', String(alpha2D));
+      if (alpha2D > 0) {
+        node.classList.add('shield-approaching');
+      } else {
+        node.classList.remove('shield-approaching');
+      }
+    }
+  }, []);
 
   // Floating +pts / -pts popup in dynamic spectrum color + smooth fade-out at the end
   const triggerDeltaPopup = useCallback(
@@ -155,7 +282,7 @@ export const App: React.FC = () => {
     []
   );
 
-  // 8-bit banner popup when a hidden sequence or shield combo is triggered (with smooth fade-out at the end)
+  // 8-bit banner popup when a hidden sequence or shield combo is triggered
   const triggerSequenceBanner = useCallback(
     (title: string, subtitle: string, bonusPoints: number, color: string, isPhi?: boolean) => {
       const id = engineRef.current.bannerCounter++;
@@ -199,6 +326,16 @@ export const App: React.FC = () => {
     eng.shieldIntactOnCurrent = newBoard.cells[0].isReinforced;
     eng.cellHitTimestamps.fill(0);
     eng.cellFirstHitTimestamps.fill(0);
+
+    // Reset OMNI state
+    eng.doneMask.fill(0);
+    eng.clearedCount = 0;
+    eng.omniBranches = [];
+    eng.omniVisualCells.clear();
+    eng.omniRecentDigits = [];
+    eng.omniRecentTimestamps = [];
+    eng.omniTriggeredSeqKeys.clear();
+
     eng.totalKeystrokes = 0;
     eng.sumDeltaMs = 0;
     eng.peakKps = 0;
@@ -228,17 +365,51 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Initialize DOM nodes when a new board is created
+  // Initialize DOM nodes when a new board or gameMode is set
   useEffect(() => {
+    const eng = engineRef.current;
+    eng.doneMask.fill(0);
+    eng.omniVisualCells.clear();
+
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const node = cellNodesRef.current[i];
       if (!node) continue;
-      node.className = i === 0 ? 'cell active' : 'cell';
+      node.className = 'cell';
       node.style.setProperty('--shield-alpha', '0');
     }
-    engineRef.current.shieldIntactOnCurrent = board.cells[0].isReinforced;
-    updateLookaheadShieldVisibility(0, board);
-  }, [board, updateLookaheadShieldVisibility]);
+
+    if (gameMode === 'LINEAR') {
+      eng.currentIndex = 0;
+      eng.shieldIntactOnCurrent = board.cells[0].isReinforced;
+      const firstNode = cellNodesRef.current[0];
+      if (firstNode) firstNode.classList.add('active');
+      updateLinearShieldVisibility(0, board);
+    } else {
+      // OMNI-8 Mode starts at center of the 21x13 board (row 10, col 6 -> index 136)
+      // We mark the starting anchor cell as the active head; the player's first keystroke
+      // will either clear index 136 or step to any surrounding neighbor!
+      // Even better: in OMNI mode, index 0 (top-left, so wrap-around in all 4 corners is immediately testable!)
+      // awaits its own digit first OR let's start at index 0 as the initial head!
+      const startIdx = 0;
+      eng.doneMask[startIdx] = 1;
+      eng.clearedCount = 1;
+      const startNode = cellNodesRef.current[startIdx];
+      if (startNode) startNode.classList.add('done');
+
+      eng.omniBranches = [
+        {
+          headIndex: startIdx,
+          trail: [startIdx],
+          visitedSet: new Set([startIdx]),
+          shieldCrackedOnHead: true,
+        },
+      ];
+      if (progressNodeRef.current) {
+        progressNodeRef.current.textContent = `1 / ${TOTAL_CELLS}`;
+      }
+      syncOmniVisualState(board);
+    }
+  }, [board, gameMode, updateLinearShieldVisibility, syncOmniVisualState]);
 
   // Smooth arcade score counter interpolation loop
   useEffect(() => {
@@ -259,7 +430,7 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Zero-Lag Global Keydown + Keyup Engine (blocks physical key hold / repeat without release)
+  // Zero-Lag Global Keydown + Keyup Engine (supports both LINEAR and OMNI-8 modes)
   useEffect(() => {
     const handleKeyUp = (e: KeyboardEvent) => {
       const physCode = e.code || e.key.toLowerCase();
@@ -275,7 +446,6 @@ export const App: React.FC = () => {
 
       const physCode = e.code || e.key.toLowerCase();
 
-      // Block OS auto-repeat AND block triggering if the physical key has not been released yet
       if (e.repeat || pressedPhysicalKeysRef.current.has(physCode)) {
         e.preventDefault();
         return;
@@ -308,11 +478,317 @@ export const App: React.FC = () => {
       if (eng.isFinished) return;
 
       const now = performance.now();
+
+      // ======================================================================
+      // MODE A: OMNI-8 (8-Way Torus Wrap + Phase Jump + Quantum Path Tracking)
+      // ======================================================================
+      if (gameMode === 'OMNI') {
+        const delta =
+          eng.lastKeystrokeTime === 0
+            ? 240
+            : Math.max(15, now - eng.lastKeystrokeTime);
+        const clampedDelta = Math.max(MIN_DELTA_MS, delta);
+        const speedBonus =
+          delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
+
+        // 1. Check if any active branch head is currently waiting for its 2nd Reinforced Shield hit!
+        const shieldHeadsMatching = eng.omniBranches.filter((br) => {
+          const hCell = board.cells[br.headIndex];
+          return (
+            hCell.isReinforced &&
+            !br.shieldCrackedOnHead &&
+            hCell.digit === mappedDigit
+          );
+        });
+
+        if (shieldHeadsMatching.length > 0) {
+          // Second hit on reinforced head(s)! Mark shield as cracked/cleared on those branches
+          for (const br of shieldHeadsMatching) {
+            br.shieldCrackedOnHead = true;
+          }
+          eng.omniBranches = shieldHeadsMatching;
+
+          // If all surviving branches now have cracked shields, check if we can collapse/commit
+          const pointsGained = (BASE_POINTS + speedBonus) * 2;
+          eng.score += pointsGained;
+          eng.lastKeystrokeTime = now;
+          eng.totalKeystrokes += 1;
+          eng.sumDeltaMs += delta;
+          eng.reinforcedHit += 1;
+          setReinforcedHitCount(eng.reinforcedHit);
+
+          const currentKps = 1000 / Math.max(40, delta);
+          if (currentKps > eng.peakKps) {
+            eng.peakKps = currentKps;
+            setPeakKps(currentKps);
+          }
+
+          const intensity = computePointIntensity(pointsGained, clampedDelta);
+          const specColor = getSpectrumColor(intensity);
+          if (scoreNodeRef.current) {
+            scoreNodeRef.current.style.color = specColor;
+          }
+
+          triggerDeltaPopup(pointsGained, specColor, '[SHIELD 2X!]');
+          syncOmniVisualState(board);
+
+          const roundedDelta = Math.round(delta);
+          samplesRef.current.push({
+            step: eng.clearedCount,
+            deltaMs: roundedDelta,
+            kps: Number(currentKps.toFixed(2)),
+            points: pointsGained,
+            isReinforced2x: true,
+          });
+          setLastSpeedMs(roundedDelta);
+          setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+          setChartTick((t) => t + 1);
+          return;
+        }
+
+        // 2. Otherwise, expand all branches whose head is ready to move to neighbors matching `mappedDigit`
+        const nextBranches: OmniBranch[] = [];
+        for (let b = 0; b < eng.omniBranches.length; b++) {
+          const br = eng.omniBranches[b];
+          const headCell = board.cells[br.headIndex];
+          // If this branch's head still has an uncracked shield, it cannot step to neighbors yet
+          if (headCell.isReinforced && !br.shieldCrackedOnHead) {
+            continue;
+          }
+
+          const neighbors = getAvailableOmniNeighbors(
+            br.headIndex,
+            eng.doneMask,
+            br.visitedSet
+          );
+
+          for (let n = 0; n < neighbors.length; n++) {
+            const nIdx = neighbors[n];
+            if (board.cells[nIdx].digit === mappedDigit) {
+              const nextVisited = new Set(br.visitedSet);
+              nextVisited.add(nIdx);
+              nextBranches.push({
+                headIndex: nIdx,
+                trail: [...br.trail, nIdx],
+                visitedSet: nextVisited,
+                shieldCrackedOnHead: !board.cells[nIdx].isReinforced,
+              });
+            }
+          }
+        }
+
+        // If NO branch has a valid neighbor with `mappedDigit` -> MISTAKE!
+        if (nextBranches.length === 0) {
+          const errDelta =
+            eng.lastKeystrokeTime === 0
+              ? MAX_BONUS_DELTA_MS
+              : Math.max(MIN_DELTA_MS, now - eng.lastKeystrokeTime);
+          const speedPenaltyFactor = Math.round(3200 / errDelta);
+          const penalty = Math.round(BASE_POINTS * 2 + speedPenaltyFactor * 2.2);
+
+          eng.score = Math.max(0, eng.score - penalty);
+          eng.lastKeystrokeTime = now;
+
+          for (const br of eng.omniBranches) {
+            const hNode = cellNodesRef.current[br.headIndex];
+            if (hNode) {
+              hNode.classList.remove('error');
+              void hNode.offsetWidth;
+              hNode.classList.add('error');
+            }
+          }
+
+          triggerDeltaPopup(-penalty, '#ff2a54', 'MISS!');
+          return;
+        }
+
+        // 3. LOOP & CONVERGENCE PROTECTION (Diamond / Same-Head Deduplication):
+        // If multiple branches land on the exact same `headIndex`, keep only the best one
+        // (the one whose trail leaves the most free immediate neighbors around `headIndex`)
+        const byHead = new Map<number, OmniBranch>();
+        for (const cand of nextBranches) {
+          const existing = byHead.get(cand.headIndex);
+          if (!existing) {
+            byHead.set(cand.headIndex, cand);
+          } else {
+            const freeCand = countImmediateFreeNeighbors(
+              cand.headIndex,
+              eng.doneMask,
+              cand.visitedSet
+            );
+            const freeExist = countImmediateFreeNeighbors(
+              existing.headIndex,
+              eng.doneMask,
+              existing.visitedSet
+            );
+            if (freeCand > freeExist) {
+              byHead.set(cand.headIndex, cand);
+            }
+          }
+        }
+
+        let deduplicated = Array.from(byHead.values());
+
+        // Anti-Dead-End Tie-Breaker: if multiple branches exist and some have >0 free neighbors
+        // while others are completely dead-ended (0 immediate free neighbors), prefer open branches
+        if (deduplicated.length > 1) {
+          const openBranches = deduplicated.filter(
+            (br) =>
+              countImmediateFreeNeighbors(br.headIndex, eng.doneMask, br.visitedSet) > 0
+          );
+          if (openBranches.length > 0) {
+            deduplicated = openBranches;
+          }
+          // Cap max simultaneous branches to 6 to prevent combinatorial explosion
+          if (deduplicated.length > 6) {
+            deduplicated = deduplicated.slice(0, 6);
+          }
+        }
+
+        // 4. Commit common prefix (or entire trail if only 1 unique branch remains!) to `doneMask`
+        if (deduplicated.length === 1) {
+          const winner = deduplicated[0];
+          for (const cellIdx of winner.trail) {
+            if (eng.doneMask[cellIdx] === 0) {
+              eng.doneMask[cellIdx] = 1;
+              eng.clearedCount += 1;
+              const cNode = cellNodesRef.current[cellIdx];
+              if (cNode) {
+                cNode.className = 'cell done';
+                cNode.style.setProperty('--shield-alpha', '0');
+              }
+            }
+          }
+          winner.trail = [winner.headIndex];
+          winner.visitedSet = new Set([winner.headIndex]);
+        } else {
+          // Even when multiple branches remain, any shared prefix across all branches can be committed
+          const minTrailLen = Math.min(...deduplicated.map((b) => b.trail.length));
+          let commonPrefixCount = 0;
+          for (let i = 0; i < minTrailLen - 1; i++) {
+            const idxAtI = deduplicated[0].trail[i];
+            if (deduplicated.every((b) => b.trail[i] === idxAtI)) {
+              commonPrefixCount = i + 1;
+              if (eng.doneMask[idxAtI] === 0) {
+                eng.doneMask[idxAtI] = 1;
+                eng.clearedCount += 1;
+                const cNode = cellNodesRef.current[idxAtI];
+                if (cNode) {
+                  cNode.className = 'cell done';
+                  cNode.style.setProperty('--shield-alpha', '0');
+                }
+              }
+            } else {
+              break;
+            }
+          }
+          if (commonPrefixCount > 0) {
+            for (const br of deduplicated) {
+              br.trail = br.trail.slice(commonPrefixCount);
+            }
+          }
+        }
+
+        eng.omniBranches = deduplicated;
+
+        // Track typed digit stream for hidden sequence detection in OMNI mode
+        eng.omniRecentDigits.push(mappedDigit);
+        eng.omniRecentTimestamps.push(now);
+        if (eng.omniRecentDigits.length > 16) {
+          eng.omniRecentDigits.shift();
+          eng.omniRecentTimestamps.shift();
+        }
+
+        let pointsGained = BASE_POINTS + speedBonus;
+        let completedSequenceName: string | undefined;
+
+        const matchedSeq = detectOmniSequenceMatch(
+          eng.omniRecentDigits,
+          eng.omniRecentTimestamps,
+          eng.omniTriggeredSeqKeys
+        );
+
+        if (matchedSeq) {
+          pointsGained += matchedSeq.bonusPoints;
+          completedSequenceName = matchedSeq.name;
+          eng.sequencesHit += 1;
+          setSequencesHitCount(eng.sequencesHit);
+
+          triggerSequenceBanner(
+            matchedSeq.name,
+            matchedSeq.subtitle,
+            matchedSeq.bonusPoints,
+            matchedSeq.color,
+            matchedSeq.isPhiEasterEgg
+          );
+        }
+
+        eng.score += pointsGained;
+        eng.lastKeystrokeTime = now;
+        eng.totalKeystrokes += 1;
+        eng.sumDeltaMs += delta;
+
+        const currentKps = 1000 / Math.max(40, delta);
+        if (currentKps > eng.peakKps) {
+          eng.peakKps = currentKps;
+          setPeakKps(currentKps);
+        }
+
+        const intensity = computePointIntensity(pointsGained, clampedDelta);
+        const specColor = getSpectrumColor(intensity);
+        if (scoreNodeRef.current) {
+          scoreNodeRef.current.style.color = specColor;
+        }
+
+        const anyUncrackedShieldNow = deduplicated.some(
+          (br) => board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead
+        );
+
+        let tag = '';
+        if (anyUncrackedShieldNow) {
+          tag = '[CRACKED!]';
+        } else if (completedSequenceName) {
+          tag = `[${completedSequenceName}]`;
+        } else if (deduplicated.length > 1) {
+          tag = `[SPLIT x${deduplicated.length}]`;
+        }
+
+        triggerDeltaPopup(pointsGained, specColor, tag || undefined);
+
+        if (progressNodeRef.current) {
+          progressNodeRef.current.textContent = `${eng.clearedCount} / ${TOTAL_CELLS}`;
+        }
+
+        if (eng.clearedCount >= TOTAL_CELLS && !anyUncrackedShieldNow) {
+          eng.isFinished = true;
+          setIsFinished(true);
+        } else {
+          syncOmniVisualState(board);
+        }
+
+        const roundedDelta = Math.round(delta);
+        samplesRef.current.push({
+          step: eng.clearedCount,
+          deltaMs: roundedDelta,
+          kps: Number(currentKps.toFixed(2)),
+          points: pointsGained,
+          isReinforced2x: false,
+          sequenceName: completedSequenceName,
+        });
+
+        setLastSpeedMs(roundedDelta);
+        setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+        setChartTick((t) => t + 1);
+        return;
+      }
+
+      // ======================================================================
+      // MODE B: LINEAR (Classic Left-to-Right Row-by-Row)
+      // ======================================================================
       const idx = eng.currentIndex;
       const currentCell = board.cells[idx];
       const currentNode = cellNodesRef.current[idx];
 
-      // 1. VALID KEYSTROKE
       if (mappedDigit === currentCell.digit) {
         const delta =
           eng.lastKeystrokeTime === 0
@@ -323,7 +799,6 @@ export const App: React.FC = () => {
         const speedBonus =
           delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
 
-        // First hit on a Reinforced cell cracks the shield
         if (currentCell.isReinforced && eng.shieldIntactOnCurrent) {
           eng.shieldIntactOnCurrent = false;
           eng.cellFirstHitTimestamps[idx] = now;
@@ -345,7 +820,6 @@ export const App: React.FC = () => {
           return;
         }
 
-        // Second hit on a Reinforced cell -> 2X SPEED MULTIPLIER!
         const isSecondShieldHit = currentCell.isReinforced && !eng.shieldIntactOnCurrent;
         const multiplier = isSecondShieldHit ? 2 : 1;
         let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
@@ -360,7 +834,6 @@ export const App: React.FC = () => {
           eng.cellFirstHitTimestamps[idx] = now;
         }
 
-        // Check if this cell completes a hidden sequence below the speed threshold
         let completedSequenceName: string | undefined;
         if (currentCell.isSequenceEnd && currentCell.sequenceInstanceId !== null) {
           const seqInst = board.sequences.find(
@@ -429,7 +902,6 @@ export const App: React.FC = () => {
 
         triggerDeltaPopup(pointsGained, specColor, tag || undefined);
 
-        // O(1) DOM update on completed cell (tile appears ONLY after completion)
         if (currentNode) {
           currentNode.classList.remove('active', 'error', 'shield-cracked', 'shield-approaching');
           currentNode.style.setProperty('--shield-alpha', '0');
@@ -450,8 +922,7 @@ export const App: React.FC = () => {
           if (nextNode) {
             nextNode.classList.add('active');
           }
-          // Smoothly fade in upcoming Reinforced shields within the 7-step lookahead window
-          updateLookaheadShieldVisibility(nextIndex, board);
+          updateLinearShieldVisibility(nextIndex, board);
         } else {
           eng.isFinished = true;
           setIsFinished(true);
@@ -471,7 +942,6 @@ export const App: React.FC = () => {
         setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
         setChartTick((t) => t + 1);
       } else {
-        // 2. MISTAKE (Speed-scaled penalty)
         const delta =
           eng.lastKeystrokeTime === 0
             ? MAX_BONUS_DELTA_MS
@@ -503,21 +973,35 @@ export const App: React.FC = () => {
     };
   }, [
     board,
+    gameMode,
     isBindingsOpen,
     startNewGame,
     triggerDeltaPopup,
     triggerSequenceBanner,
-    updateLookaheadShieldVisibility,
+    updateLinearShieldVisibility,
+    syncOmniVisualState,
   ]);
 
-  const handleSaveBindings = (newBindings: KeyBindingsMap) => {
+  const handleSaveSettings = (newBindings: KeyBindingsMap, newMode: GameMode) => {
     setBindings(newBindings);
     saveKeyBindings(newBindings);
+    if (newMode !== gameMode) {
+      setGameMode(newMode);
+      saveGameMode(newMode);
+      startNewGame();
+    }
+  };
+
+  const handleQuickToggleMode = () => {
+    const nextMode: GameMode = gameMode === 'LINEAR' ? 'OMNI' : 'LINEAR';
+    setGameMode(nextMode);
+    saveGameMode(nextMode);
+    startNewGame();
   };
 
   return (
     <div className="app-shell">
-      {/* TOP HUD: PROGRESS ON LEFT, BIG GAME TITLE IN CENTER, ACTIONS ON RIGHT */}
+      {/* TOP HUD: PROGRESS & MODE ON LEFT, BIG GAME TITLE IN CENTER, ACTIONS ON RIGHT */}
       <header className="top-hud">
         <div className="hud-side hud-left">
           <div className="progress-box">
@@ -526,11 +1010,26 @@ export const App: React.FC = () => {
               0 / {TOTAL_CELLS}
             </span>
           </div>
+          <button
+            type="button"
+            className={`btn-arcade small ${gameMode === 'OMNI' ? 'gold' : 'cyan'}`}
+            title="Switch between Linear and Omni-8 Free Direction mode"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              handleQuickToggleMode();
+            }}
+          >
+            MODE: {gameMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}
+          </button>
         </div>
 
         <div className="hud-center-brand">
           <h1 className="brand-title-big">FIGRID</h1>
-          <span className="brand-subtitle">21x13 SPEED MATRIX</span>
+          <span className="brand-subtitle">
+            {gameMode === 'OMNI'
+              ? '21x13 OMNI-DIRECTIONAL QUANTUM MATRIX'
+              : '21x13 SPEED MATRIX'}
+          </span>
         </div>
 
         <div className="hud-side hud-right">
@@ -542,7 +1041,7 @@ export const App: React.FC = () => {
               setIsBindingsOpen(true);
             }}
           >
-            KEYBINDINGS
+            SETTINGS
           </button>
           <button
             type="button"
@@ -600,7 +1099,9 @@ export const App: React.FC = () => {
                     />
                   </svg>
                 )}
-                <span className="cell-digit">{cell.digit}</span>
+                <span className="cell-digit">
+                  <FuturisticDigit digit={cell.digit} />
+                </span>
               </div>
             ))}
           </div>
@@ -657,11 +1158,12 @@ export const App: React.FC = () => {
         </div>
       </footer>
 
-      {/* KEYBINDINGS CONFIGURATION MODAL */}
+      {/* SETTINGS & KEYBINDINGS MODAL */}
       <KeyBindingsModal
         isOpen={isBindingsOpen}
         bindings={bindings}
-        onSave={handleSaveBindings}
+        gameMode={gameMode}
+        onSave={handleSaveSettings}
         onClose={() => setIsBindingsOpen(false)}
       />
     </div>

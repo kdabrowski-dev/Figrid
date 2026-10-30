@@ -1,12 +1,13 @@
 // ============================================================================
-// FIGRID // Fair & Deterministic-Budget Board Generator + Scoring Engine
+// FIGRID // Fair & Deterministic-Budget Board Generator + Omni-8 Engine
 // ============================================================================
 
 export const ROWS = 21;
 export const COLS = 13;
 export const TOTAL_CELLS = ROWS * COLS; // 273
-export const SHIELD_REVEAL_DISTANCE = 7; // Shield starts fading in 7 steps ahead
+export const SHIELD_REVEAL_DISTANCE = 7; // Shield starts fading in 7 steps/cells ahead
 
+export type GameMode = 'LINEAR' | 'OMNI';
 export type SequenceTier = 'SHORT' | 'MEDIUM' | 'LONG' | 'PHI';
 
 export interface SequencePattern {
@@ -16,7 +17,7 @@ export interface SequencePattern {
   tier: SequenceTier;
   digits: number[];
   bonusPoints: number;
-  maxAvgDeltaMs: number; // Max average ms per keystroke to trigger sequence bonus
+  maxAvgDeltaMs: number;
   color: string;
   isPhiEasterEgg?: boolean;
 }
@@ -190,27 +191,21 @@ export const SEQUENCE_CATALOG: SequencePattern[] = [
   },
 ];
 
-/**
- * FIXED FAIR-PLAY BUDGET FOR EVERY 21x13 BOARD (273 cells)
- * Guarantees that every single match has the exact same number of sequences
- * per difficulty tier, the exact same bonus pool (4050 pts), and the exact
- * same number of Reinforced Shields (26 total: 8 inside sequences + 18 outside).
- */
 export const FAIR_BOARD_CONFIG = {
-  SHORT_COUNT: 5,               // 5 short sequences (200 pts each = 1000 pts)
-  MEDIUM_5_COUNT: 2,            // 2 medium 5-digit sequences (350 pts each = 700 pts)
-  PHI_COUNT: 1,                 // 1x Golden Ratio Phi Easter Egg (550 pts)
-  MEDIUM_6_COUNT: 2,            // 2 medium 6-digit sequences (450 pts each = 900 pts)
-  LONG_COUNT: 1,                // 1 long 10-digit Jackpot sequence (900 pts)
-  REINFORCED_IN_SEQUENCES: 8,   // 8 shields inside sequences (stackable 2x + sequence bonus)
-  REINFORCED_IN_RANDOM: 18,     // 18 shields outside sequences (26 shields total)
+  SHORT_COUNT: 5,
+  MEDIUM_5_COUNT: 2,
+  PHI_COUNT: 1,
+  MEDIUM_6_COUNT: 2,
+  LONG_COUNT: 1,
+  REINFORCED_IN_SEQUENCES: 8,
+  REINFORCED_IN_RANDOM: 18,
 };
 
 export interface PlacedSequenceInstance {
   instanceId: number;
   pattern: SequencePattern;
   startIndex: number;
-  endIndex: number; // inclusive
+  endIndex: number;
 }
 
 export interface CellData {
@@ -239,11 +234,6 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
-/**
- * Generates a balanced 21x13 board (273 digits) with a strictly fair sequence
- * and reinforced shield budget. Sequences are completely disguised in the grid
- * so players must discover them on their own.
- */
 export function generateFairBoard(): GeneratedBoard {
   const shortPool = SEQUENCE_CATALOG.filter((s) => s.tier === 'SHORT');
   const med5Pool = SEQUENCE_CATALOG.filter((s) => s.tier === 'MEDIUM' && s.digits.length === 5);
@@ -267,7 +257,6 @@ export function generateFairBoard(): GeneratedBoard {
       .map((p) => ({ ...p, bonusPoints: 900 })),
   ];
 
-  // Place longest sequences first so they always fit cleanly
   const orderedForPlacement = [...selectedPatterns].sort((a, b) => b.digits.length - a.digits.length);
 
   const occupied = new Uint8Array(TOTAL_CELLS);
@@ -378,18 +367,10 @@ export function generateFairBoard(): GeneratedBoard {
   };
 }
 
-/**
- * Calculates the proximity alpha factor (0..1) for a Reinforced cell ahead of currentIndex.
- * Only visible when 1 <= (cellIndex - currentIndex) <= 7.
- * Distance 7 -> alpha 0.14
- * Distance 6 -> alpha 0.28
- * Distance 5 -> alpha 0.42
- * Distance 4 -> alpha 0.57
- * Distance 3 -> alpha 0.71
- * Distance 2 -> alpha 0.85
- * Distance 1 -> alpha 1.00
- * Distance 0 (active cell) -> alpha 1.00
- */
+// ============================================================================
+// LINEAR & 2D TORUS PROXIMITY ALPHA FOR REINFORCED SHIELDS
+// ============================================================================
+
 export function getShieldProximityAlpha(cellIndex: number, currentIndex: number): number {
   const distance = cellIndex - currentIndex;
   if (distance < 0 || distance > SHIELD_REVEAL_DISTANCE) {
@@ -398,9 +379,194 @@ export function getShieldProximityAlpha(cellIndex: number, currentIndex: number)
   if (distance === 0) {
     return 1;
   }
-  // Smooth step from 1/7 up to 7/7 as player gets closer
   const factor = (SHIELD_REVEAL_DISTANCE - distance + 1) / SHIELD_REVEAL_DISTANCE;
   return Number(factor.toFixed(3));
+}
+
+/**
+ * Computes 2D Chebyshev (8-way king move) distance on a 21x13 torus (with edge wrap-around)
+ * from any active head to `cellIndex`, returning the highest proximity alpha in [0..1].
+ * Only visible when 0 <= distance <= 7!
+ */
+export function getOmni2DShieldAlpha(cellIndex: number, headIndices: number[]): number {
+  const targetR = Math.floor(cellIndex / COLS);
+  const targetC = cellIndex % COLS;
+
+  let minDist = Infinity;
+  for (let i = 0; i < headIndices.length; i++) {
+    const hIdx = headIndices[i];
+    const hR = Math.floor(hIdx / COLS);
+    const hC = hIdx % COLS;
+
+    const rawDr = Math.abs(targetR - hR);
+    const rawDc = Math.abs(targetC - hC);
+    // Torus wrap-around distance on both axes
+    const dr = Math.min(rawDr, ROWS - rawDr);
+    const dc = Math.min(rawDc, COLS - rawDc);
+    // 8-directional plane distance (Chebyshev metric)
+    const dist = Math.max(dr, dc);
+    if (dist < minDist) {
+      minDist = dist;
+    }
+  }
+
+  if (minDist > SHIELD_REVEAL_DISTANCE) {
+    return 0;
+  }
+  if (minDist === 0) {
+    return 1;
+  }
+  const factor = (SHIELD_REVEAL_DISTANCE - minDist + 1) / SHIELD_REVEAL_DISTANCE;
+  return Number(factor.toFixed(3));
+}
+
+// ============================================================================
+// OMNI-8 TORUS NAVIGATION, PHASE JUMP RAYCAST, & QUANTUM PATH TRACKING
+// ============================================================================
+
+const OMNI_DIRECTIONS: [number, number][] = [
+  [-1, 0],  // N  (Up)
+  [-1, 1],  // NE (Up-Right)
+  [0, 1],   // E  (Right)
+  [1, 1],   // SE (Down-Right)
+  [1, 0],   // S  (Down)
+  [1, -1],  // SW (Down-Left)
+  [0, -1],  // W  (Left)
+  [-1, -1], // NW (Up-Left)
+];
+
+/**
+ * Returns the available next cell indices around `fromIndex` in 8 directions
+ * with full Torus Edge Wrap-Around AND Idea A Phase-Jump raycasting through
+ * already visited/done cells so the player can NEVER get trapped in a dead end!
+ *
+ * Specifically:
+ * - In each of the 8 directions, we step `(r + dr + 21) % 21` and `(c + dc + 13) % 13`.
+ * - If the immediate neighbor (step 1) is unvisited, it is directly added.
+ * - If the immediate neighbor is already visited (`done` or in `branchVisited`),
+ *   we slide (Phase-Jump raycast) along that same direction vector through visited
+ *   tiles until we hit the first unvisited tile!
+ * - Fallback: If all 8 rays only loop through visited cells (extremely rare near end of board),
+ *   we return the nearest unvisited cells on the torus plane.
+ */
+export function getAvailableOmniNeighbors(
+  fromIndex: number,
+  doneMask: Uint8Array,
+  branchVisited?: ReadonlySet<number>
+): number[] {
+  const isOccupied = (idx: number) =>
+    doneMask[idx] === 1 || (branchVisited !== undefined && branchVisited.has(idx));
+
+  const startR = Math.floor(fromIndex / COLS);
+  const startC = fromIndex % COLS;
+  const result = new Set<number>();
+
+  const maxRaySteps = Math.max(ROWS, COLS);
+
+  for (let d = 0; d < OMNI_DIRECTIONS.length; d++) {
+    const [dr, dc] = OMNI_DIRECTIONS[d];
+    for (let step = 1; step <= maxRaySteps; step++) {
+      const nr = (((startR + dr * step) % ROWS) + ROWS) % ROWS;
+      const nc = (((startC + dc * step) % COLS) + COLS) % COLS;
+      const candidateIdx = nr * COLS + nc;
+      if (candidateIdx === fromIndex) break;
+
+      if (!isOccupied(candidateIdx)) {
+        result.add(candidateIdx);
+        break; // Found the first free cell along this ray (direct neighbor or Phase Jump!)
+      }
+    }
+  }
+
+  // Fallback if all 8 directional rays wrapped around without hitting a free cell
+  if (result.size === 0) {
+    let bestDist = Infinity;
+    for (let idx = 0; idx < TOTAL_CELLS; idx++) {
+      if (idx !== fromIndex && !isOccupied(idx)) {
+        const r = Math.floor(idx / COLS);
+        const c = idx % COLS;
+        const dr = Math.min(Math.abs(r - startR), ROWS - Math.abs(r - startR));
+        const dc = Math.min(Math.abs(c - startC), COLS - Math.abs(c - startC));
+        const dist = Math.max(dr, dc);
+        if (dist < bestDist) {
+          bestDist = dist;
+          result.clear();
+          result.add(idx);
+        } else if (dist === bestDist && result.size < 8) {
+          result.add(idx);
+        }
+      }
+    }
+  }
+
+  return Array.from(result);
+}
+
+/**
+ * Counts how many immediate (step-1) unvisited neighbors a cell has on the torus.
+ * Used as an Anti-Dead-End tie-breaker when collapsing converging quantum branches.
+ */
+export function countImmediateFreeNeighbors(
+  cellIndex: number,
+  doneMask: Uint8Array,
+  branchVisited?: ReadonlySet<number>
+): number {
+  const r = Math.floor(cellIndex / COLS);
+  const c = cellIndex % COLS;
+  let count = 0;
+  for (let d = 0; d < OMNI_DIRECTIONS.length; d++) {
+    const [dr, dc] = OMNI_DIRECTIONS[d];
+    const nr = (r + dr + ROWS) % ROWS;
+    const nc = (c + dc + COLS) % COLS;
+    const nIdx = nr * COLS + nc;
+    if (doneMask[nIdx] === 0 && (!branchVisited || !branchVisited.has(nIdx))) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Checks if the tail of the player's recently typed digits matches ANY sequence in SEQUENCE_CATALOG!
+ * In OMNI mode, because the player can move in 8 directions and weave their own path,
+ * we check the actual stream of typed digits & timestamps so sequences work seamlessly in both modes!
+ */
+export function detectOmniSequenceMatch(
+  recentDigits: number[],
+  recentTimestamps: number[],
+  alreadyTriggeredSeqIds: Set<string>
+): SequencePattern | null {
+  const len = recentDigits.length;
+  if (len < 4) return null;
+
+  for (const pattern of SEQUENCE_CATALOG) {
+    const pLen = pattern.digits.length;
+    if (len < pLen) continue;
+
+    // Check if the last pLen digits match pattern.digits
+    let matches = true;
+    for (let i = 0; i < pLen; i++) {
+      if (recentDigits[len - pLen + i] !== pattern.digits[i]) {
+        matches = false;
+        break;
+      }
+    }
+    if (!matches) continue;
+
+    const startTime = recentTimestamps[len - pLen];
+    const endTime = recentTimestamps[len - 1];
+    const avgDelta = Math.max(1, endTime - startTime) / Math.max(1, pLen - 1);
+
+    if (avgDelta <= pattern.maxAvgDeltaMs) {
+      // Create a unique cooldown key so the exact same sequence at the same step isn't double-counted
+      const triggerKey = `${pattern.id}_${len}`;
+      if (!alreadyTriggeredSeqIds.has(triggerKey)) {
+        alreadyTriggeredSeqIds.add(triggerKey);
+        return pattern;
+      }
+    }
+  }
+  return null;
 }
 
 // ============================================================================
@@ -413,14 +579,6 @@ interface RGB {
   b: number;
 }
 
-/**
- * 5-stop 8-bit arcade spectrum:
- * 0.00 (Slow / Low pts)      -> #38b6ff (Cool Cyan-Blue)
- * 0.25 (Steady rhythm)       -> #00ff9d (Neon Emerald)
- * 0.50 (Fast)                -> #ffea00 (Arcade Gold)
- * 0.75 (Very Fast / High)    -> #ff5500 (Blazing Orange)
- * 1.00 (Hyper Speed / Max)   -> #ff00e5 (Electric Magenta)
- */
 const SPECTRUM_STOPS: { pos: number; color: RGB }[] = [
   { pos: 0.0, color: { r: 56, g: 182, b: 255 } },   // #38b6ff
   { pos: 0.25, color: { r: 0, g: 255, b: 157 } },   // #00ff9d
@@ -457,7 +615,7 @@ export function computePointIntensity(points: number, deltaMs: number): number {
 }
 
 // ============================================================================
-// KEYBINDINGS + LOCALSTORAGE
+// KEYBINDINGS + SETTINGS LOCALSTORAGE
 // ============================================================================
 
 export type KeyBindingsMap = Record<number, string[]>;
@@ -476,6 +634,7 @@ export const DEFAULT_KEY_BINDINGS: KeyBindingsMap = {
 };
 
 const BINDINGS_STORAGE_KEY = 'figrid_key_bindings_v1';
+const MODE_STORAGE_KEY = 'figrid_game_mode_v1';
 
 export function loadKeyBindings(): KeyBindingsMap {
   try {
@@ -501,6 +660,23 @@ export function saveKeyBindings(bindings: KeyBindingsMap): void {
     localStorage.setItem(BINDINGS_STORAGE_KEY, JSON.stringify(bindings));
   } catch {
     // ignore storage errors
+  }
+}
+
+export function loadGameMode(): GameMode {
+  try {
+    const raw = localStorage.getItem(MODE_STORAGE_KEY);
+    return raw === 'OMNI' ? 'OMNI' : 'LINEAR';
+  } catch {
+    return 'LINEAR';
+  }
+}
+
+export function saveGameMode(mode: GameMode): void {
+  try {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore
   }
 }
 

@@ -3,32 +3,37 @@ import {
   KeyBindingsMap,
   DEFAULT_KEY_BINDINGS,
   formatKeyLabel,
+  GameMode,
 } from './gameEngine';
 
 interface KeyBindingsModalProps {
   isOpen: boolean;
   bindings: KeyBindingsMap;
-  onSave: (newBindings: KeyBindingsMap) => void;
+  gameMode: GameMode;
+  onSave: (newBindings: KeyBindingsMap, newMode: GameMode) => void;
   onClose: () => void;
 }
 
 export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   isOpen,
   bindings,
+  gameMode,
   onSave,
   onClose,
 }) => {
   const [draft, setDraft] = useState<KeyBindingsMap>(() => structuredClone(bindings));
+  const [draftMode, setDraftMode] = useState<GameMode>(gameMode);
   const [listeningDigit, setListeningDigit] = useState<number | null>(null);
   const [conflictError, setConflictError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setDraft(structuredClone(bindings));
+      setDraftMode(gameMode);
       setListeningDigit(null);
       setConflictError(null);
     }
-  }, [isOpen, bindings]);
+  }, [isOpen, bindings, gameMode]);
 
   useEffect(() => {
     if (listeningDigit === null || !isOpen) return;
@@ -47,7 +52,6 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
         return;
       }
 
-      // Prevent binding a key that is already assigned to ANY digit (including the current one)
       for (let d = 0; d <= 9; d++) {
         const assignedKeys = draft[d] || [];
         if (assignedKeys.includes(rawKey)) {
@@ -98,7 +102,6 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   const handleResetDigit = (digit: number) => {
     setConflictError(null);
     const defaultKey = String(digit);
-    // Check if the default digit key is currently bound to another digit
     for (let d = 0; d <= 9; d++) {
       if (d !== digit && (draft[d] || []).includes(defaultKey)) {
         setConflictError(
@@ -136,7 +139,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   };
 
   const handleSave = () => {
-    onSave(draft);
+    onSave(draft, draftMode);
     onClose();
   };
 
@@ -144,12 +147,41 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>KEYBINDINGS CONFIGURATION</h2>
+          <h2>SETTINGS & KEYBINDINGS</h2>
           <button type="button" className="btn-close" onClick={onClose}>
             X
           </button>
         </div>
 
+        {/* NAVIGATION MODE SELECTOR */}
+        <div className="settings-mode-section">
+          <div className="settings-section-title">NAVIGATION MODE</div>
+          <div className="mode-toggle-grid">
+            <button
+              type="button"
+              className={`mode-card-btn ${draftMode === 'LINEAR' ? 'active' : ''}`}
+              onClick={() => setDraftMode('LINEAR')}
+            >
+              <span className="mode-card-name">LINEAR (LEFT TO RIGHT)</span>
+              <span className="mode-card-desc">
+                Classic reading order from index 0 to 272 row by row.
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`mode-card-btn ${draftMode === 'OMNI' ? 'active' : ''}`}
+              onClick={() => setDraftMode('OMNI')}
+            >
+              <span className="mode-card-name">OMNI-8 (FREE DIRECTION + WRAP)</span>
+              <span className="mode-card-desc">
+                Move in any of the 8 surrounding directions with edge wrap-around, phase-jump over
+                cleared tiles, and quantum multi-path tracking!
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="settings-section-title">DIGIT KEYBINDINGS</div>
         <p className="modal-desc">
           Click <strong>+ ADD KEY</strong> next to any digit and press a key. Each key can only be
           assigned to <strong>one digit at a time</strong> (duplicate keybindings are blocked).
@@ -222,7 +254,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             CANCEL
           </button>
           <button type="button" className="btn-arcade gold" onClick={handleSave}>
-            SAVE BINDINGS
+            SAVE SETTINGS
           </button>
         </div>
       </div>
