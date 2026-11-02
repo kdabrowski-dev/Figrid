@@ -2,11 +2,41 @@ import { GameMode, KeyBindingsMap } from './gameEngine';
 import { LeaderboardEntry } from './LeaderboardView';
 
 const DEFAULT_BACKEND_URL = 'http://localhost:5000';
-export const API_BASE_URL: string =
-  ((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL ||
-    DEFAULT_BACKEND_URL).replace(/\/+$/, '');
-
+const API_URL_STORAGE_KEY = 'figrid_api_url_v1';
 const JWT_STORAGE_KEY = 'figrid_jwt_token_v1';
+
+export function getApiBaseUrl(): string {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('api');
+    if (fromQuery && fromQuery.startsWith('http')) {
+      const cleaned = fromQuery.replace(/\/+$/, '');
+      localStorage.setItem(API_URL_STORAGE_KEY, cleaned);
+      return cleaned;
+    }
+    const fromStorage = localStorage.getItem(API_URL_STORAGE_KEY);
+    if (fromStorage && fromStorage.startsWith('http')) {
+      return fromStorage.replace(/\/+$/, '');
+    }
+  } catch {
+    // ignore
+  }
+  const envUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL;
+  return (envUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, '');
+}
+
+export function setApiBaseUrl(url: string): void {
+  try {
+    const cleaned = url.trim().replace(/\/+$/, '');
+    if (cleaned) {
+      localStorage.setItem(API_URL_STORAGE_KEY, cleaned);
+    } else {
+      localStorage.removeItem(API_URL_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 export interface UserProfile {
   id: number;
@@ -40,6 +70,7 @@ export function setStoredToken(token: string | null): void {
 function buildHeaders(includeAuth = true): HeadersInit {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
   };
   if (includeAuth) {
     const token = getStoredToken();
@@ -57,7 +88,7 @@ export async function apiRegister(
   preferredMode: GameMode,
   keyBindings: KeyBindingsMap
 ): Promise<{ token: string; user: UserProfile }> {
-  const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/auth/register`, {
     method: 'POST',
     headers: buildHeaders(false),
     body: JSON.stringify({
@@ -79,7 +110,7 @@ export async function apiLogin(
   username: string,
   password: string
 ): Promise<{ token: string; user: UserProfile }> {
-  const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
     method: 'POST',
     headers: buildHeaders(false),
     body: JSON.stringify({ username, password }),
@@ -95,7 +126,7 @@ export async function apiFetchCurrentUser(): Promise<UserProfile | null> {
   const token = getStoredToken();
   if (!token) return null;
   try {
-    const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/auth/me`, {
       method: 'GET',
       headers: buildHeaders(true),
     });
@@ -120,7 +151,7 @@ export async function apiUpdateUserSettings(payload: {
   const token = getStoredToken();
   if (!token) return null;
   try {
-    const res = await fetch(`${API_BASE_URL}/api/user/settings`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/user/settings`, {
       method: 'PUT',
       headers: buildHeaders(true),
       body: JSON.stringify(payload),
@@ -138,7 +169,7 @@ export async function apiFetchSharedLeaderboard(): Promise<{
   online: boolean;
 }> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/leaderboard?limit=100`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/leaderboard?limit=100`, {
       method: 'GET',
       headers: buildHeaders(false),
     });
@@ -173,7 +204,7 @@ export async function apiSubmitScoreToBackend(entry: {
   mistakes: number;
 }): Promise<LeaderboardEntry | null> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/leaderboard`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/leaderboard`, {
       method: 'POST',
       headers: buildHeaders(true),
       body: JSON.stringify(entry),
