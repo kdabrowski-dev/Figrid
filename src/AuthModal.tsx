@@ -3,8 +3,6 @@ import { GameMode, KeyBindingsMap } from './gameEngine';
 import {
   apiLogin,
   apiRegister,
-  getApiBaseUrl,
-  setApiBaseUrl,
   setStoredToken,
   UserProfile,
 } from './apiClient';
@@ -31,7 +29,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
 }) => {
   const [authTab, setAuthTab] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
-  const [serverUrl, setServerUrl] = useState<string>(() => getApiBaseUrl());
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [nick, setNick] = useState(currentNick || 'AAA');
@@ -43,7 +40,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    setApiBaseUrl(serverUrl);
     setIsLoading(true);
     try {
       if (authTab === 'LOGIN') {
@@ -83,20 +79,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button type="button" className="btn-close" onClick={onClose}>
             X
           </button>
-        </div>
-
-        <div className="auth-field">
-          <label className="hud-label">BACKEND / NGROK SERVER URL</label>
-          <input
-            type="url"
-            className="auth-input"
-            value={serverUrl}
-            onChange={(e) => {
-              setServerUrl(e.target.value);
-              setApiBaseUrl(e.target.value);
-            }}
-            placeholder="https://xxxx.ngrok-free.app"
-          />
         </div>
 
         {currentUser ? (

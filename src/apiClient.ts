@@ -1,41 +1,12 @@
 import { GameMode, KeyBindingsMap } from './gameEngine';
 import { LeaderboardEntry } from './LeaderboardView';
 
-const DEFAULT_BACKEND_URL = 'http://localhost:5000';
-const API_URL_STORAGE_KEY = 'figrid_api_url_v1';
+const DEFAULT_BACKEND_URL = 'https://crib-dry-hypnotize.ngrok-free.dev';
 const JWT_STORAGE_KEY = 'figrid_jwt_token_v1';
 
 export function getApiBaseUrl(): string {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const fromQuery = params.get('api');
-    if (fromQuery && fromQuery.startsWith('http')) {
-      const cleaned = fromQuery.replace(/\/+$/, '');
-      localStorage.setItem(API_URL_STORAGE_KEY, cleaned);
-      return cleaned;
-    }
-    const fromStorage = localStorage.getItem(API_URL_STORAGE_KEY);
-    if (fromStorage && fromStorage.startsWith('http')) {
-      return fromStorage.replace(/\/+$/, '');
-    }
-  } catch {
-    // ignore
-  }
   const envUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL;
   return (envUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, '');
-}
-
-export function setApiBaseUrl(url: string): void {
-  try {
-    const cleaned = url.trim().replace(/\/+$/, '');
-    if (cleaned) {
-      localStorage.setItem(API_URL_STORAGE_KEY, cleaned);
-    } else {
-      localStorage.removeItem(API_URL_STORAGE_KEY);
-    }
-  } catch {
-    // ignore
-  }
 }
 
 export interface UserProfile {
