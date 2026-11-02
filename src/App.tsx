@@ -1288,10 +1288,10 @@ export const App: React.FC = () => {
         let quantumTitle: string | undefined;
 
         // Award Quantum Merge Bonus & trigger thin bright laser line across the diamond!
+        // Display the Quantum toast in the bottom score box via triggerDeltaPopup (just like other bonuses).
         if (maxQuantumMergeCount >= 2) {
           let quantumBonus = 300;
           let qColor = '#00f0ff';
-          let qSub = '2 parallel paths collapsed into a single diamond!';
 
           if (maxQuantumMergeCount === 2) {
             quantumTitle = 'DOUBLE QUANTUM!';
@@ -1301,23 +1301,14 @@ export const App: React.FC = () => {
             quantumTitle = 'TRIPLE QUANTUM!';
             quantumBonus = 750;
             qColor = '#ff00e5';
-            qSub = '3 parallel paths converged simultaneously!';
           } else {
             quantumTitle = 'QUADRUPLE QUANTUM!';
             quantumBonus = 2000;
             qColor = '#ffd700';
-            qSub = `${maxQuantumMergeCount}-way Impossible Singularity Convergence!`;
           }
 
           pointsGained += quantumBonus;
           triggerQuantumLaserSweep(quantumLaserTrails, qColor);
-          triggerSequenceBanner(
-            quantumTitle,
-            qSub,
-            quantumBonus,
-            qColor,
-            maxQuantumMergeCount >= 4
-          );
         }
 
         const matchedSeq = detectOmniSequenceMatch(
@@ -1363,7 +1354,9 @@ export const App: React.FC = () => {
         );
 
         let tag = '';
-        if (quantumTitle) {
+        if (quantumTitle && completedSequenceName) {
+          tag = `[${quantumTitle} + ${completedSequenceName}]`;
+        } else if (quantumTitle) {
           tag = `[${quantumTitle}]`;
         } else if (anyUncrackedShieldNow) {
           tag = '[CRACKED!]';
@@ -1768,6 +1761,7 @@ export const App: React.FC = () => {
       {activeTab === 'LEADERBOARD' ? (
         <LeaderboardView
           entries={leaderboard}
+          defaultMode={gameMode}
           isBackendOnline={isBackendOnline}
           onRefresh={refreshLeaderboard}
           onBackToGame={() => setActiveTab('GAME')}

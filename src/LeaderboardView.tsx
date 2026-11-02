@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameMode } from './gameEngine';
 import { apiFetchSharedLeaderboard } from './apiClient';
 
@@ -80,7 +80,6 @@ export function saveLeaderboardToStorage(entries: LeaderboardEntry[]): void {
   } catch {
     // ignore
   }
-  // Also persist directly to public/leaderboard.json on disk when running Vite dev server locally
   fetch('/api/leaderboard', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -106,6 +105,7 @@ export function exportLeaderboardJsonFile(entries: LeaderboardEntry[]): void {
 
 interface LeaderboardViewProps {
   entries: LeaderboardEntry[];
+  defaultMode: GameMode;
   isBackendOnline: boolean;
   onRefresh: () => void;
   onBackToGame: () => void;
@@ -113,16 +113,32 @@ interface LeaderboardViewProps {
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   entries,
+  defaultMode,
   isBackendOnline,
   onRefresh,
   onBackToGame,
 }) => {
+  const [selectedMode, setSelectedMode] = useState<GameMode>(defaultMode);
+
+  useEffect(() => {
+    setSelectedMode(defaultMode);
+  }, [defaultMode]);
+
+  const linearCount = entries.filter((e) => e.mode === 'LINEAR').length;
+  const omniCount = entries.filter((e) => e.mode === 'OMNI').length;
+
+  const filteredEntries = entries
+    .filter((e) => e.mode === selectedMode)
+    .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec);
+
   return (
     <section className="leaderboard-view">
       <div className="leaderboard-card">
         <div className="leaderboard-header">
           <div>
-            <h2 className="leaderboard-title">HALL OF FAME // LEADERBOARD</h2>
+            <h2 className="leaderboard-title">
+              HALL OF FAME // {selectedMode === 'OMNI' ? 'OMNI-8 MODE' : 'LINEAR MODE'}
+            </h2>
             <p className="leaderboard-sub">
               {isBackendOnline
                 ? 'Connected to shared PostgreSQL Leaderboard Server'
@@ -152,6 +168,30 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </div>
         </div>
 
+        {/* SEPARATE MODE RANKING TABS (LINEAR vs OMNI-8) */}
+        <div className="leaderboard-mode-tabs">
+          <button
+            type="button"
+            className={`leaderboard-mode-tab linear ${
+              selectedMode === 'LINEAR' ? 'active' : ''
+            }`}
+            onClick={() => setSelectedMode('LINEAR')}
+          >
+            <span className="lb-tab-title">LINEAR RANKING</span>
+            <span className="lb-tab-count">{linearCount} RUNS</span>
+          </button>
+          <button
+            type="button"
+            className={`leaderboard-mode-tab omni ${
+              selectedMode === 'OMNI' ? 'active' : ''
+            }`}
+            onClick={() => setSelectedMode('OMNI')}
+          >
+            <span className="lb-tab-title">OMNI-8 RANKING</span>
+            <span className="lb-tab-count">{omniCount} RUNS</span>
+          </button>
+        </div>
+
         <div className="leaderboard-table-wrap">
           <table className="leaderboard-table">
             <thead>
@@ -160,21 +200,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 <th>NICK</th>
                 <th>SCORE</th>
                 <th>TOTAL TIME</th>
-                <th>MODE</th>
                 <th>AVG PACE</th>
                 <th>MISTAKES</th>
                 <th>DATE</th>
               </tr>
             </thead>
             <tbody>
-              {entries.length === 0 ? (
+              {filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="empty-row">
-                    NO SCORES RECORDED YET
+                  <td colSpan={7} className="empty-row">
+                    NO SCORES RECORDED IN {selectedMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'} MODE YET
                   </td>
                 </tr>
               ) : (
-                entries.map((entry, idx) => (
+                filteredEntries.map((entry, idx) => (
                   <tr key={entry.id} className={idx < 3 ? `top-rank rank-${idx + 1}` : ''}>
                     <td className="col-rank">#{idx + 1}</td>
                     <td className="col-nick">
@@ -191,11 +230,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       {typeof entry.totalTimeSec === 'number'
                         ? `${entry.totalTimeSec.toFixed(2)}s`
                         : '--'}
-                    </td>
-                    <td className="col-mode">
-                      <span className={`mode-pill ${entry.mode.toLowerCase()}`}>
-                        {entry.mode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}
-                      </span>
                     </td>
                     <td className="col-pace">{entry.avgSpeedMs} ms</td>
                     <td className="col-mistakes">{entry.mistakes}</td>

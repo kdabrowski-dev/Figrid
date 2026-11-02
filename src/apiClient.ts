@@ -140,14 +140,25 @@ export async function apiFetchSharedLeaderboard(): Promise<{
   online: boolean;
 }> {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/leaderboard?limit=100`, {
-      method: 'GET',
-      headers: buildHeaders(false),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      const rawList = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-      const entries: LeaderboardEntry[] = rawList.map((item: Record<string, unknown>) => ({
+    const [linearRes, omniRes] = await Promise.all([
+      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=LINEAR&limit=100`, {
+        method: 'GET',
+        headers: buildHeaders(false),
+      }),
+      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=OMNI&limit=100`, {
+        method: 'GET',
+        headers: buildHeaders(false),
+      }),
+    ]);
+
+    if (linearRes.ok && omniRes.ok) {
+      const linearJson = await linearRes.json();
+      const omniJson = await omniRes.json();
+      const rawLinear = Array.isArray(linearJson?.data) ? linearJson.data : [];
+      const rawOmni = Array.isArray(omniJson?.data) ? omniJson.data : [];
+      const combined = [...rawLinear, ...rawOmni];
+
+      const entries: LeaderboardEntry[] = combined.map((item: Record<string, unknown>) => ({
         id: String(item.id ?? `score-${Math.random()}`),
         nick: String(item.nick ?? 'AAA').slice(0, 3).toUpperCase(),
         score: Number(item.score ?? 0),
