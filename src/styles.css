@@ -496,8 +496,9 @@ body {
   transition: fill 0.2s ease, stroke 0.2s ease;
 }
 
-/* As the player gets closer within the 7-step window, the digit itself subtly tints toward cyan */
-.cell.shield-approaching .cell-digit {
+/* As the player gets closer within the 7-step window, the digit itself subtly tints toward cyan
+   (ONLY on non-active, non-head, non-cracked cells so active/head cells always keep high-contrast dark text!) */
+.cell.shield-approaching:not(.active):not(.omni-blurry-head):not(.shield-cracked) .cell-digit {
   color: color-mix(
     in srgb,
     var(--text-unpressed) calc((1 - var(--shield-alpha, 0)) * 100%),
@@ -506,23 +507,42 @@ body {
   text-shadow: 0 0 calc(var(--shield-alpha, 0) * 6px) rgba(56, 189, 248, 0.55);
 }
 
-/* On active cell, if it has an intact shield, make the shield outline bright white/gold so it stands out */
-.cell.active .cell-shield-svg {
+/* On active or candidate head cell, if it has an intact shield, make the shield outline dark contrasting */
+.cell.active .cell-shield-svg,
+.cell.omni-blurry-head .cell-shield-svg {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1.06);
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9));
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.85));
 }
 
-.cell.active .shield-outline-path {
-  fill: rgba(5, 8, 17, 0.22);
+.cell.active .shield-outline-path,
+.cell.omni-blurry-head .shield-outline-path {
+  fill: rgba(5, 8, 17, 0.18);
   stroke: #050811;
   stroke-width: 2.2;
+}
+
+/* High-contrast dark digit on ALL active, candidate head, and shield-cracked tiles! */
+.cell.active .cell-digit,
+.cell.active.shield-approaching .cell-digit,
+.cell.shield-cracked .cell-digit,
+.cell.shield-cracked.shield-approaching .cell-digit,
+.cell.omni-blurry-head .cell-digit,
+.cell.omni-blurry-head.shield-approaching .cell-digit {
+  color: #050811 !important;
+  text-shadow: none !important;
+}
+
+.cell.active .futuristic-digit-svg .glyph-main,
+.cell.shield-cracked .futuristic-digit-svg .glyph-main,
+.cell.omni-blurry-head .futuristic-digit-svg .glyph-main {
+  fill: #050811 !important;
 }
 
 /* After 1st hit on a Reinforced cell (Cracked Shield, waiting for 2nd hit for 2X bonus) */
 .cell.shield-cracked {
   background-color: #ff9100 !important;
-  color: #000 !important;
+  color: #050811 !important;
   border: 2px solid #fff !important;
   box-shadow: 0 0 14px #ff9100 !important;
   transform: scale(1.14);
@@ -536,67 +556,136 @@ body {
 
 .cell.shield-cracked .shield-outline-path {
   fill: none;
-  stroke: #ffffff;
-  stroke-width: 2;
+  stroke: #050811;
+  stroke-width: 2.2;
   stroke-dasharray: 3 2;
 }
 
 /* Currently targeted cell (or single confirmed head in OMNI-8 mode) */
 .cell.active {
-  background-color: var(--accent-cyan);
+  background-color: var(--branch-color, var(--accent-cyan));
   color: #050811 !important;
-  border-color: #ffffff;
+  border: 1.5px solid #ffffff;
   font-weight: 800;
-  box-shadow: 0 0 12px var(--accent-cyan);
+  box-shadow: 0 0 12px var(--branch-color, var(--accent-cyan));
   transform: scale(1.12);
   z-index: 3;
 }
 
-/* OMNI-8 Quantum Superposition: Subtle, clean candidate path heads when multiple paths match */
+/* OMNI-8 Quantum Candidate Heads: Each head has its branch's unique neon color (--branch-color)
+   with a solid glowing background and dark #050811 digit so heads stand out clearly from trails & available neighbors! */
 .cell.omni-blurry-head {
-  background-color: rgba(56, 189, 248, 0.24);
-  color: #f8fafc !important;
-  border: 1.5px solid rgba(56, 189, 248, 0.88);
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.32);
-  transform: scale(1.06);
+  background-color: var(--branch-color, #00f0ff);
+  color: #050811 !important;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 12px var(--branch-color, #00f0ff);
+  transform: scale(1.09);
   z-index: 3;
 }
 
-.cell.omni-blurry-head .futuristic-digit-svg .glyph-main {
-  fill: #ffffff;
-}
-
-/* Dual-Role Cell: Both a Candidate Head AND Clickable as the next step from another Candidate Head!
-   Combines the Cyan Candidate Head fill/inner border with the Warm Amber Clickable outer dashed ring! */
+/* Dual-Role Cell: Both a Candidate Head AND Clickable as the next step from another Candidate Head! */
 .cell.omni-blurry-head.omni-head-also-clickable {
-  background-color: rgba(56, 189, 248, 0.28);
-  border: 1.5px solid #38bdf8;
-  outline: 2px dashed #fbbf24;
-  outline-offset: 1px;
+  background-color: var(--branch-color, #00f0ff);
+  border: 2px solid #ffffff;
+  outline: 2px dashed #fde047;
+  outline-offset: 2px;
   box-shadow:
-    0 0 12px rgba(251, 191, 36, 0.45),
-    inset 0 0 8px rgba(56, 189, 248, 0.45);
-  transform: scale(1.09);
+    0 0 14px var(--branch-color, #00f0ff),
+    0 0 8px rgba(253, 224, 71, 0.75);
+  transform: scale(1.11);
   z-index: 4;
 }
 
-.cell.omni-blurry-head.omni-head-also-clickable .futuristic-digit-svg .glyph-main {
-  fill: #fef08a;
+/* Uncommitted quantum branch trail cells: tinted in their branch's unique color (--branch-color) */
+.cell.omni-branch-trail:not(.active):not(.omni-blurry-head) {
+  background-color: color-mix(in srgb, var(--branch-color, #00f0ff) 20%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--branch-color, #00f0ff) 80%, transparent);
+  box-shadow: inset 0 0 6px color-mix(in srgb, var(--branch-color, #00f0ff) 25%, transparent);
+  color: var(--branch-color, #bae6fd);
 }
 
-/* Uncommitted quantum branch trail cells leading up to a candidate head */
-.cell.omni-branch-trail {
-  background-color: rgba(56, 189, 248, 0.09);
-  border-color: rgba(56, 189, 248, 0.32);
-  color: #bae6fd;
+/* When two or more active candidate paths overlap on the same cell, change the border to a dual-color overlap frame! */
+.cell.omni-trail-overlap {
+  border: 2px dashed var(--overlap-color-1, #ffffff) !important;
+  outline: 1.5px solid var(--overlap-color-2, #ffea00);
+  outline-offset: -3px;
+  box-shadow:
+    0 0 10px var(--overlap-color-1, rgba(255, 255, 255, 0.45)),
+    inset 0 0 8px var(--overlap-color-2, rgba(255, 234, 0, 0.35));
 }
 
-/* Available next-step neighbor tiles in OMNI-8 (Distinct Warm Amber/Gold highlight so it clearly differs from Cyan heads) */
-.cell.omni-available:not(.active):not(.omni-blurry-head) {
-  background-color: rgba(251, 191, 36, 0.11);
-  border: 1px dashed rgba(251, 191, 36, 0.62);
-  box-shadow: inset 0 0 6px rgba(251, 191, 36, 0.16);
-  color: #fde68a;
+/* Available next-step neighbor tiles in OMNI-8 (Subtle warm-ivory dashed frame, clearly distinct from solid colored heads & trails) */
+.cell.omni-available:not(.active):not(.omni-blurry-head):not(.omni-branch-trail) {
+  background-color: rgba(254, 243, 199, 0.08);
+  border: 1px dashed rgba(253, 224, 71, 0.55);
+  box-shadow: inset 0 0 5px rgba(253, 224, 71, 0.12);
+  color: #fef08a;
+}
+
+/* Quantum Diamond Convergence: SVG Thin Bright Laser Line Overlay & Tile Pulse */
+.quantum-laser-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+  overflow: visible;
+}
+
+.quantum-laser-glow {
+  fill: none;
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+  filter: blur(2.5px);
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: quantumLaserSweep 0.72s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.quantum-laser-core {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px #ffffff);
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: quantumLaserSweep 0.72s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes quantumLaserSweep {
+  0% {
+    stroke-dashoffset: 100;
+    opacity: 1;
+  }
+  58% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+.cell.quantum-diamond-pulse {
+  animation: quantumDiamondCellFlash 0.68s ease-out;
+}
+
+@keyframes quantumDiamondCellFlash {
+  0% {
+    background-color: rgba(255, 255, 255, 0.75);
+    border-color: #ffffff;
+    box-shadow: 0 0 16px #00f0ff;
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Completed cell: ONLY NOW does the tile background appear! */
@@ -1337,6 +1426,80 @@ body {
   text-align: center;
   color: #64748b;
   padding: 28px !important;
+}
+
+.col-pilot-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #94a3b8;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+/* ============================================================================
+   PILOT AUTH MODAL (LOGIN / REGISTER / JWT CLOUD SYNC)
+   ============================================================================ */
+.auth-modal-box {
+  max-width: 480px;
+}
+
+.auth-form,
+.auth-profile-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-input {
+  background: #0c0f18;
+  border: 1.5px solid #242c42;
+  color: #f8fafc;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+  user-select: text;
+}
+
+.auth-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+}
+
+.auth-nick-input {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  letter-spacing: 4px;
+  max-width: 120px;
+  text-transform: uppercase;
+}
+
+.auth-profile-row {
+  background: #0c0f18;
+  border: 1px solid #242c42;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+.auth-username {
+  color: var(--accent-cyan);
+}
+
+.auth-nick-badge {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: var(--accent-yellow);
+  letter-spacing: 2px;
 }
 
 @media (max-width: 980px) {

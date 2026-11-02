@@ -12,6 +12,22 @@ export const OMNI_SHIELD_REVEAL_DISTANCE = 3; // Omni-8 mode: 2D plane radius ha
 export type GameMode = 'LINEAR' | 'OMNI';
 export type SequenceTier = 'SHORT' | 'MEDIUM' | 'LONG' | 'PHI';
 
+/**
+ * Distinct Neon Palette for OMNI-8 Quantum Candidate Branches.
+ * Every active path gets its own unique color (both head and trail) so paths
+ * are always visually distinguishable even when multiple paths exist simultaneously.
+ */
+export const OMNI_BRANCH_COLORS: string[] = [
+  '#00f0ff', // 0: Electric Cyan
+  '#ff00e5', // 1: Neon Magenta
+  '#38ff62', // 2: Cyber Lime
+  '#ff9100', // 3: Solar Orange
+  '#a855f7', // 4: Plasma Violet
+  '#ff2a85', // 5: Hyper Rose
+  '#3b82f6', // 6: Cobalt Laser
+  '#eab308', // 7: Gold Pulse
+];
+
 export interface SequencePattern {
   id: string;
   name: string;
@@ -208,6 +224,8 @@ export interface PlacedSequenceInstance {
   pattern: SequencePattern;
   startIndex: number;
   endIndex: number;
+  cellIndices: number[];
+  orientation: 'HORIZONTAL' | 'VERTICAL';
 }
 
 export interface CellData {
@@ -236,7 +254,12 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
-export function generateFairBoard(): GeneratedBoard {
+/**
+ * Generates a fair 21x13 board.
+ * - In LINEAR mode, sequences are placed horizontally along the linear reading path.
+ * - In OMNI mode, sequences are placed BOTH horizontally AND vertically across the 21x13 grid!
+ */
+export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
   const shortPool = SEQUENCE_CATALOG.filter((s) => s.tier === 'SHORT');
   const med5Pool = SEQUENCE_CATALOG.filter((s) => s.tier === 'MEDIUM' && s.digits.length === 5);
   const phiPattern = SEQUENCE_CATALOG.find((s) => s.tier === 'PHI')!;
@@ -262,41 +285,145 @@ export function generateFairBoard(): GeneratedBoard {
   const orderedForPlacement = [...selectedPatterns].sort((a, b) => b.digits.length - a.digits.length);
 
   const occupied = new Uint8Array(TOTAL_CELLS);
+  if (mode === 'OMNI') {
+    // Reserve the center starting cell in OMNI mode so sequences don't get split by the spawn point
+    occupied[OMNI_CENTER_INDEX] = 1;
+  }
+
   const placedInstances: PlacedSequenceInstance[] = [];
 
   for (let i = 0; i < orderedForPlacement.length; i++) {
     const pattern = orderedForPlacement[i];
     const len = pattern.digits.length;
 
-    const validStarts: number[] = [];
-    for (let start = 2; start <= TOTAL_CELLS - len - 1; start++) {
-      let canFit = true;
-      for (let k = -1; k <= len; k++) {
-        const checkIdx = start + k;
-        if (checkIdx >= 0 && checkIdx < TOTAL_CELLS && occupied[checkIdx] === 1) {
-          canFit = false;
-          break;
+    // In OMNI mode, alternate / randomize between VERTICAL and HORIZONTAL sequence placement!
+    const tryVerticalFirst = mode === 'OMNI' && (i % 2 === 0 || Math.random() < 0.55);
+
+    const candidatePlacements: { indices: number[]; orientation: 'HORIZONTAL' | 'VERTICAL' }[] = [];
+
+    const collectVerticalCandidates = () => {
+      if (len > ROWS) return;
+      for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r <= ROWS - len; r++) {
+          let canFit = true;
+          const indices: number[] = [];
+          for (let k = -1; k <= len; k++) {
+            const checkR = r + k;
+            if (checkR >= 0 && checkR < ROWS) {
+              const checkIdx = checkR * COLS + c;
+              if (occupied[checkIdx] === 1) {
+                canFit = false;
+                break;
+              }
+              if (k >= 0 && k < len) {
+                indices.push(checkIdx);
+              }
+            }
+          }
+          if (canFit && indices.length === len) {
+            candidatePlacements.push({ indices, orientation: 'VERTICAL' });
+            // In OMNI mode, also allow bottom-to-top vertical orientation
+            if (mode === 'OMNI') {
+              candidatePlacements.push({
+                indices: [...indices].reverse(),
+                orientation: 'VERTICAL',
+              });
+            }
+          }
         }
       }
-      if (canFit) {
-        validStarts.push(start);
+    };
+
+    const collectHorizontalCandidates = () => {
+      if (mode === 'OMNI') {
+        // Strictly within a row or wrapping cleanly horizontally in OMNI mode
+        if (len <= COLS) {
+          for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c <= COLS - len; c++) {
+              let canFit = true;
+              const indices: number[] = [];
+              for (let k = -1; k <= len; k++) {
+                const checkC = c + k;
+                if (checkC >= 0 && checkC < COLS) {
+                  const checkIdx = r * COLS + checkC;
+                  if (occupied[checkIdx] === 1) {
+                    canFit = false;
+                    break;
+                  }
+                  if (k >= 0 && k < len) {
+                    indices.push(checkIdx);
+                  }
+                }
+              }
+              if (canFit && indices.length === len) {
+                candidatePlacements.push({ indices, orientation: 'HORIZONTAL' });
+                candidatePlacements.push({
+                  indices: [...indices].reverse(),
+                  orientation: 'HORIZONTAL',
+                });
+              }
+            }
+          }
+        }
+      } else {
+        // LINEAR mode: 1D contiguous placement
+        for (let start = 2; start <= TOTAL_CELLS - len - 1; start++) {
+          let canFit = true;
+          for (let k = -1; k <= len; k++) {
+            const checkIdx = start + k;
+            if (checkIdx >= 0 && checkIdx < TOTAL_CELLS && occupied[checkIdx] === 1) {
+              canFit = false;
+              break;
+            }
+          }
+          if (canFit) {
+            const indices: number[] = [];
+            for (let k = 0; k < len; k++) indices.push(start + k);
+            candidatePlacements.push({ indices, orientation: 'HORIZONTAL' });
+          }
+        }
+      }
+    };
+
+    if (mode === 'OMNI') {
+      if (tryVerticalFirst) {
+        collectVerticalCandidates();
+        if (candidatePlacements.length === 0) collectHorizontalCandidates();
+      } else {
+        collectHorizontalCandidates();
+        if (candidatePlacements.length === 0) collectVerticalCandidates();
+      }
+    } else {
+      collectHorizontalCandidates();
+    }
+
+    let chosenIndices: number[];
+    let chosenOrientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL';
+
+    if (candidatePlacements.length > 0) {
+      const picked =
+        candidatePlacements[Math.floor(Math.random() * candidatePlacements.length)];
+      chosenIndices = picked.indices;
+      chosenOrientation = picked.orientation;
+    } else {
+      const fallbackStart = Math.max(2, Math.min(TOTAL_CELLS - len, i * 22 + 3));
+      chosenIndices = [];
+      for (let k = 0; k < len; k++) {
+        chosenIndices.push(fallbackStart + k);
       }
     }
 
-    const chosenStart =
-      validStarts.length > 0
-        ? validStarts[Math.floor(Math.random() * validStarts.length)]
-        : Math.max(2, Math.min(TOTAL_CELLS - len, i * 22 + 3));
-
-    for (let k = 0; k < len; k++) {
-      occupied[chosenStart + k] = 1;
+    for (const cIdx of chosenIndices) {
+      occupied[cIdx] = 1;
     }
 
     placedInstances.push({
       instanceId: i + 1,
       pattern,
-      startIndex: chosenStart,
-      endIndex: chosenStart + len - 1,
+      startIndex: chosenIndices[0],
+      endIndex: chosenIndices[chosenIndices.length - 1],
+      cellIndices: chosenIndices,
+      orientation: chosenOrientation,
     });
   }
 
@@ -320,9 +447,9 @@ export function generateFairBoard(): GeneratedBoard {
 
   const sequenceIndices: number[] = [];
   for (const inst of placedInstances) {
-    const { pattern, startIndex, endIndex, instanceId } = inst;
-    for (let offset = 0; offset < pattern.digits.length; offset++) {
-      const cellIdx = startIndex + offset;
+    const { pattern, cellIndices, startIndex, endIndex, instanceId } = inst;
+    for (let offset = 0; offset < cellIndices.length; offset++) {
+      const cellIdx = cellIndices[offset];
       cells[cellIdx].digit = pattern.digits[offset];
       cells[cellIdx].sequenceInstanceId = instanceId;
       cells[cellIdx].sequenceTier = pattern.tier;
@@ -388,7 +515,6 @@ export function getShieldProximityAlpha(cellIndex: number, currentIndex: number)
 /**
  * Computes 2D Chebyshev (8-way king move) distance on a 21x13 torus (with edge wrap-around)
  * from any active head to `cellIndex`, returning the highest proximity alpha in [0..1].
- * Only visible when 0 <= distance <= 7!
  */
 export function getOmni2DShieldAlpha(cellIndex: number, headIndices: number[]): number {
   const targetR = Math.floor(cellIndex / COLS);
@@ -402,10 +528,8 @@ export function getOmni2DShieldAlpha(cellIndex: number, headIndices: number[]): 
 
     const rawDr = Math.abs(targetR - hR);
     const rawDc = Math.abs(targetC - hC);
-    // Torus wrap-around distance on both axes
     const dr = Math.min(rawDr, ROWS - rawDr);
     const dc = Math.min(rawDc, COLS - rawDc);
-    // 8-directional plane distance (Chebyshev metric)
     const dist = Math.max(dr, dc);
     if (dist < minDist) {
       minDist = dist;
@@ -440,23 +564,13 @@ const OMNI_DIRECTIONS: [number, number][] = [
 
 export interface WrapGhostProjection {
   key: string;
-  ghostRow: number; // e.g. -1 or 21 when wrapping vertically, or 0..20
-  ghostCol: number; // e.g. -1 or 13 when wrapping horizontally, or 0..12
-  targetIndex: number; // Real cell index on the 21x13 board
+  ghostRow: number;
+  ghostCol: number;
+  targetIndex: number;
   digit: number;
   isReinforced: boolean;
 }
 
-/**
- * Computes which directional moves from `fromIndex` cross the outer border of the 21x13 board
- * and returns their Ghost/Blurry projections positioned in the 1-cell border padding around the grid!
- * For example, at top-left (row 0, col 0):
- * - Left (0, -1)       -> ghost at (row 0, col -1) showing real cell (0, 12)
- * - Up-Left (-1, -1)   -> ghost at (row -1, col -1) showing real cell (20, 12)
- * - Up (-1, 0)         -> ghost at (row -1, col 0) showing real cell (20, 0)
- * - Up-Right (-1, +1)  -> ghost at (row -1, col 1) showing real cell (20, 1)
- * - Down-Left (+1, -1) -> ghost at (row 1, col -1) showing real cell (1, 12)
- */
 export function getWrapGhostProjectionsForHeads(
   headIndices: number[],
   board: GeneratedBoard,
@@ -479,11 +593,9 @@ export function getWrapGhostProjectionsForHeads(
       const adjR = startR + dr;
       const adjC = startC + dc;
 
-      // Does stepping in direction (dr, dc) from this head cross outside the 21x13 board boundary?
       const crossesBoundary = adjR < 0 || adjR >= ROWS || adjC < 0 || adjC >= COLS;
       if (!crossesBoundary) continue;
 
-      // Find the first unvisited target cell along this ray (wrapping around the torus)
       for (let step = 1; step <= maxRaySteps; step++) {
         const nr = (((startR + dr * step) % ROWS) + ROWS) % ROWS;
         const nc = (((startC + dc * step) % COLS) + COLS) % COLS;
@@ -491,7 +603,6 @@ export function getWrapGhostProjectionsForHeads(
         if (candidateIdx === fromIndex) break;
 
         if (!isOccupied(candidateIdx)) {
-          // Place the blurry ghost tile right outside the edge next to the head: (adjR, adjC)
           const key = `${adjR}_${adjC}`;
           if (!ghostsByKey.has(key)) {
             const targetCell = board.cells[candidateIdx];
@@ -515,17 +626,8 @@ export function getWrapGhostProjectionsForHeads(
 
 /**
  * Returns the available next cell indices around `fromIndex` in 8 directions
- * with full Torus Edge Wrap-Around AND Idea A Phase-Jump raycasting through
+ * with full Torus Edge Wrap-Around AND Phase-Jump raycasting through
  * already visited/done cells so the player can NEVER get trapped in a dead end!
- *
- * Specifically:
- * - In each of the 8 directions, we step `(r + dr + 21) % 21` and `(c + dc + 13) % 13`.
- * - If the immediate neighbor (step 1) is unvisited, it is directly added.
- * - If the immediate neighbor is already visited (`done` or in `branchVisited`),
- *   we slide (Phase-Jump raycast) along that same direction vector through visited
- *   tiles until we hit the first unvisited tile!
- * - Fallback: If all 8 rays only loop through visited cells (extremely rare near end of board),
- *   we return the nearest unvisited cells on the torus plane.
  */
 export function getAvailableOmniNeighbors(
   fromIndex: number,
@@ -551,12 +653,11 @@ export function getAvailableOmniNeighbors(
 
       if (!isOccupied(candidateIdx)) {
         result.add(candidateIdx);
-        break; // Found the first free cell along this ray (direct neighbor or Phase Jump!)
+        break;
       }
     }
   }
 
-  // Fallback if all 8 directional rays wrapped around without hitting a free cell
   if (result.size === 0) {
     let bestDist = Infinity;
     for (let idx = 0; idx < TOTAL_CELLS; idx++) {
@@ -580,10 +681,6 @@ export function getAvailableOmniNeighbors(
   return Array.from(result);
 }
 
-/**
- * Counts how many immediate (step-1) unvisited neighbors a cell has on the torus.
- * Used as an Anti-Dead-End tie-breaker when collapsing converging quantum branches.
- */
 export function countImmediateFreeNeighbors(
   cellIndex: number,
   doneMask: Uint8Array,
@@ -604,11 +701,6 @@ export function countImmediateFreeNeighbors(
   return count;
 }
 
-/**
- * Checks if the tail of the player's recently typed digits matches ANY sequence in SEQUENCE_CATALOG!
- * In OMNI mode, because the player can move in 8 directions and weave their own path,
- * we check the actual stream of typed digits & timestamps so sequences work seamlessly in both modes!
- */
 export function detectOmniSequenceMatch(
   recentDigits: number[],
   recentTimestamps: number[],
@@ -621,7 +713,6 @@ export function detectOmniSequenceMatch(
     const pLen = pattern.digits.length;
     if (len < pLen) continue;
 
-    // Check if the last pLen digits match pattern.digits
     let matches = true;
     for (let i = 0; i < pLen; i++) {
       if (recentDigits[len - pLen + i] !== pattern.digits[i]) {
@@ -636,7 +727,6 @@ export function detectOmniSequenceMatch(
     const avgDelta = Math.max(1, endTime - startTime) / Math.max(1, pLen - 1);
 
     if (avgDelta <= pattern.maxAvgDeltaMs) {
-      // Create a unique cooldown key so the exact same sequence at the same step isn't double-counted
       const triggerKey = `${pattern.id}_${len}`;
       if (!alreadyTriggeredSeqIds.has(triggerKey)) {
         alreadyTriggeredSeqIds.add(triggerKey);

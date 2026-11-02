@@ -1,5 +1,6 @@
 import React from 'react';
 import { GameMode } from './gameEngine';
+import { apiFetchSharedLeaderboard } from './apiClient';
 
 export interface LeaderboardEntry {
   id: string;
@@ -10,11 +11,30 @@ export interface LeaderboardEntry {
   avgSpeedMs: number;
   mistakes: number;
   date: string;
+  username?: string;
 }
 
 const LEADERBOARD_STORAGE_KEY = 'figrid_leaderboard_entries_v2';
 
-export async function fetchInitialLeaderboard(): Promise<LeaderboardEntry[]> {
+export async function fetchInitialLeaderboard(): Promise<{
+  entries: LeaderboardEntry[];
+  isBackendOnline: boolean;
+}> {
+  // 1. Try shared PostgreSQL backend first
+  const backendRes = await apiFetchSharedLeaderboard();
+  if (backendRes.online) {
+    try {
+      localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(backendRes.entries));
+    } catch {
+      // ignore
+    }
+    return {
+      entries: backendRes.entries.sort((a, b) => b.score - a.score),
+      isBackendOnline: true,
+    };
+  }
+
+  // 2. Fallback to static ./leaderboard.json + browser localStorage when backend is offline
   let diskEntries: LeaderboardEntry[] = [];
   try {
     const res = await fetch('./leaderboard.json', { cache: 'no-store' });
@@ -48,7 +68,10 @@ export async function fetchInitialLeaderboard(): Promise<LeaderboardEntry[]> {
     }
   }
 
-  return Array.from(byId.values()).sort((a, b) => b.score - a.score);
+  return {
+    entries: Array.from(byId.values()).sort((a, b) => b.score - a.score),
+    isBackendOnline: false,
+  };
 }
 
 export function saveLeaderboardToStorage(entries: LeaderboardEntry[]): void {
@@ -57,7 +80,7 @@ export function saveLeaderboardToStorage(entries: LeaderboardEntry[]): void {
   } catch {
     // ignore
   }
-  // Also persist directly to public/leaderboard.json on disk when running locally
+  // Also persist directly to public/leaderboard.json on disk when running Vite dev server locally
   fetch('/api/leaderboard', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -83,11 +106,15 @@ export function exportLeaderboardJsonFile(entries: LeaderboardEntry[]): void {
 
 interface LeaderboardViewProps {
   entries: LeaderboardEntry[];
+  isBackendOnline: boolean;
+  onRefresh: () => void;
   onBackToGame: () => void;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   entries,
+  isBackendOnline,
+  onRefresh,
   onBackToGame,
 }) => {
   return (
@@ -97,15 +124,25 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div>
             <h2 className="leaderboard-title">HALL OF FAME // LEADERBOARD</h2>
             <p className="leaderboard-sub">
-              Synced with <code>leaderboard.json</code> on disk & browser storage
+              {isBackendOnline
+                ? 'Connected to shared PostgreSQL Leaderboard Server'
+                : 'Offline Mode // Synced with local storage & leaderboard.json'}
             </p>
           </div>
           <div className="leaderboard-actions">
             <button
               type="button"
+              className="btn-arcade small cyan"
+              onClick={onRefresh}
+              title="Refresh scores from server"
+            >
+              REFRESH
+            </button>
+            <button
+              type="button"
               className="btn-arcade small gold"
               onClick={() => exportLeaderboardJsonFile(entries)}
-              title="Download leaderboard.json to save directly in the repository"
+              title="Download leaderboard.json backup"
             >
               SAVE leaderboard.json
             </button>
@@ -140,7 +177,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 entries.map((entry, idx) => (
                   <tr key={entry.id} className={idx < 3 ? `top-rank rank-${idx + 1}` : ''}>
                     <td className="col-rank">#{idx + 1}</td>
-                    <td className="col-nick">{entry.nick}</td>
+                    <td className="col-nick">
+                      {entry.nick}
+                      {entry.username && (
+                        <span className="col-pilot-sub" title={`Account: ${entry.username}`}>
+                          {' '}
+                          [{entry.username}]
+                        </span>
+                      )}
+                    </td>
                     <td className="col-score">{entry.score.toLocaleString('en-US')}</td>
                     <td className="col-time">
                       {typeof entry.totalTimeSec === 'number'
