@@ -45,15 +45,6 @@ const BASE_POINTS = 12;
 const MIN_DELTA_MS = 50;
 const MAX_BONUS_DELTA_MS = 1000;
 
-interface BannerPopup {
-  id: number;
-  title: string;
-  subtitle: string;
-  bonusText: string;
-  color: string;
-  isPhi?: boolean;
-}
-
 interface OmniBranch {
   headIndex: number;
   trail: number[];
@@ -66,6 +57,16 @@ interface QuantumLaserLine {
   id: number;
   pointsAttr: string;
   color: string;
+}
+
+function detectMobilePhone(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isMobileUA = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isSmallTouch =
+    window.innerWidth <= 820 &&
+    (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
+  return isMobileUA || isSmallTouch;
 }
 
 /**
@@ -87,10 +88,8 @@ function buildSvgPolylinesForTrail(trail: number[]): string[] {
     if (i > 0) {
       const prevIdx = trail[i - 1];
       const prevR = Math.floor(prevIdx / COLS);
-      const prevC = idx % COLS;
       const rawDr = Math.abs(r - prevR);
       const rawDc = Math.abs(c - (prevIdx % COLS));
-      // If this step wrapped across the outer torus edge, start a new segment so no line cuts across the whole board
       if (rawDr > 4 || rawDc > 4) {
         if (currentPoints.length >= 2) {
           polylines.push(currentPoints.join(' '));
@@ -98,7 +97,6 @@ function buildSvgPolylinesForTrail(trail: number[]): string[] {
         currentPoints = [`${x},${y}`];
         continue;
       }
-      void prevC;
     }
     currentPoints.push(`${x},${y}`);
   }
@@ -144,6 +142,8 @@ export const App: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isBackendOnline, setIsBackendOnline] = useState<boolean>(false);
+  const [isMobileDevice, setIsMobileDevice] = useState<boolean>(() => detectMobilePhone());
+  const [dismissedMobileWarning, setDismissedMobileWarning] = useState<boolean>(false);
 
   // Leaderboard state + 3-letter nick entry after completing the board
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -152,7 +152,7 @@ export const App: React.FC = () => {
   const [hasSubmittedScore, setHasSubmittedScore] = useState<boolean>(false);
 
   // Telemetry state for right panel and summary
-  const [chartTick, setChartTick] = useState(0);
+  const [, setChartTick] = useState(0);
   const [lastSpeedMs, setLastSpeedMs] = useState<number | null>(null);
   const [avgSpeedMs, setAvgSpeedMs] = useState<number | null>(null);
   const [peakKps, setPeakKps] = useState<number>(0);
@@ -161,7 +161,6 @@ export const App: React.FC = () => {
   const [mistakesCount, setMistakesCount] = useState<number>(0);
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [hasStarted, setHasStarted] = useState<boolean>(false);
-  const [activeBanners, setActiveBanners] = useState<BannerPopup[]>([]);
   const [wrapGhosts, setWrapGhosts] = useState<WrapGhostProjection[]>([]);
   const [quantumLasers, setQuantumLasers] = useState<QuantumLaserLine[]>([]);
 
@@ -207,11 +206,18 @@ export const App: React.FC = () => {
     reinforcedHit: 0,
     mistakes: 0,
     isFinished: false,
-    bannerCounter: 1,
     laserCounter: 1,
   });
 
   const samplesRef = useRef<SpeedSample[]>([]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setIsMobileDevice(detectMobilePhone());
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const applyUserProfileSettings = useCallback(
     (user: UserProfile) => {
@@ -322,7 +328,6 @@ export const App: React.FC = () => {
         const alpha = getShieldProximityAlpha(i, newCurrentIndex);
         node.style.setProperty('--shield-alpha', String(alpha));
         if (i === newCurrentIndex) {
-          // Strip shield-approaching on the active cell so active high-contrast dark text is never overridden!
           node.classList.remove('shield-approaching');
         } else {
           node.classList.add('shield-approaching');
@@ -478,7 +483,6 @@ export const App: React.FC = () => {
 
       const alpha2D = getOmni2DShieldAlpha(i, headIndices);
       node.style.setProperty('--shield-alpha', String(alpha2D));
-      // Do not add shield-approaching on active/head cells so their digit contrast stays dark!
       if (alpha2D > 0 && !headSet.has(i)) {
         node.classList.add('shield-approaching');
       } else {
@@ -487,7 +491,7 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Floating +pts / -pts popup in dynamic spectrum color + smooth fade-out at the end
+  // Floating +pts / -pts popup in dynamic spectrum color inside the Score Box
   const triggerDeltaPopup = useCallback(
     (deltaPoints: number, spectrumColor: string, extraTag?: string) => {
       const isPositive = deltaPoints >= 0;
@@ -542,36 +546,6 @@ export const App: React.FC = () => {
     []
   );
 
-  // 8-bit banner popup when a hidden sequence or Quantum Merge is triggered
-  const triggerSequenceBanner = useCallback(
-    (title: string, subtitle: string, bonusPoints: number, color: string, isPhi?: boolean) => {
-      const id = engineRef.current.bannerCounter++;
-      setActiveBanners((prev) => [
-        ...prev.slice(-2),
-        {
-          id,
-          title,
-          subtitle,
-          bonusText: `+${bonusPoints} PTS BONUS!`,
-          color,
-          isPhi,
-        },
-      ]);
-
-      if (isPhi && boardWrapperRef.current) {
-        boardWrapperRef.current.classList.remove('phi-golden-flash');
-        void boardWrapperRef.current.offsetWidth;
-        boardWrapperRef.current.classList.add('phi-golden-flash');
-      }
-
-      const durationMs = isPhi ? 2600 : 1950;
-      setTimeout(() => {
-        setActiveBanners((prev) => prev.filter((b) => b.id !== id));
-      }, durationMs);
-    },
-    []
-  );
-
   // Start / Restart Game
   const startNewGame = useCallback(
     (overrideMode?: GameMode) => {
@@ -619,7 +593,6 @@ export const App: React.FC = () => {
       setHasStarted(false);
       setHasSubmittedScore(false);
       setNickCursor(0);
-      setActiveBanners([]);
       setQuantumLasers([]);
       setChartTick((t) => t + 1);
 
@@ -654,12 +627,19 @@ export const App: React.FC = () => {
       node.style.removeProperty('--overlap-color-2');
     }
 
+    if (scoreNodeRef.current) {
+      scoreNodeRef.current.textContent = eng.displayedScore.toLocaleString('en-US');
+    }
+
     if (gameMode === 'LINEAR') {
       eng.currentIndex = 0;
       eng.shieldIntactOnCurrent = board.cells[0].isReinforced;
       const firstNode = cellNodesRef.current[0];
       if (firstNode) firstNode.classList.add('active');
       setWrapGhosts([]);
+      if (progressNodeRef.current) {
+        progressNodeRef.current.textContent = `0 / ${TOTAL_CELLS}`;
+      }
       updateLinearShieldVisibility(0, board);
     } else {
       const startIdx = OMNI_CENTER_INDEX;
@@ -695,14 +675,12 @@ export const App: React.FC = () => {
 
     setHasSubmittedScore(true);
 
-    // Sync user's preferred 3-letter nick if logged in
     if (currentUser && nick !== currentUser.nick) {
       apiUpdateUserSettings({ nick }).then((updatedUser) => {
         if (updatedUser) setCurrentUser(updatedUser);
       });
     }
 
-    // 1. Try submitting to shared PostgreSQL backend
     const backendSaved = await apiSubmitScoreToBackend({
       nick,
       score: eng.score,
@@ -965,109 +943,24 @@ export const App: React.FC = () => {
           }
         }
 
-        // 1. SHIELD PRIORITY ON DOUBLE-TAP:
-        // If ANY active branch head has an uncracked shield matching `mappedDigit`,
-        // ALWAYS prioritize cracking/completing that shield before moving to other neighbors!
-        const shieldHeadsMatching = eng.omniBranches.filter((br) => {
-          const hCell = board.cells[br.headIndex];
-          return (
-            hCell.isReinforced &&
-            !br.shieldCrackedOnHead &&
-            hCell.digit === mappedDigit
-          );
-        });
-
-        if (shieldHeadsMatching.length > 0) {
-          setHasStarted(true);
-          for (const br of shieldHeadsMatching) {
-            br.shieldCrackedOnHead = true;
-          }
-          eng.omniBranches = shieldHeadsMatching;
-
-          if (eng.omniBranches.length === 1) {
-            const winner = eng.omniBranches[0];
-            for (const cellIdx of winner.trail) {
-              if (eng.doneMask[cellIdx] === 0) {
-                eng.doneMask[cellIdx] = 1;
-                eng.clearedCount += 1;
-                const cNode = cellNodesRef.current[cellIdx];
-                if (cNode) {
-                  cNode.className = 'cell done';
-                  cNode.style.setProperty('--shield-alpha', '0');
-                }
-              }
-            }
-            winner.trail = [winner.headIndex];
-            winner.visitedSet = new Set([winner.headIndex]);
-          }
-
-          eng.omniRecentDigits.push(mappedDigit);
-          eng.omniRecentTimestamps.push(now);
-          if (eng.omniRecentDigits.length > 16) {
-            eng.omniRecentDigits.shift();
-            eng.omniRecentTimestamps.shift();
-          }
-
-          const pointsGained = (BASE_POINTS + speedBonus) * 2;
-          eng.score += pointsGained;
-          eng.lastKeystrokeTime = now;
-          eng.totalKeystrokes += 1;
-          eng.sumDeltaMs += delta;
-          eng.reinforcedHit += 1;
-          setReinforcedHitCount(eng.reinforcedHit);
-
-          const currentKps = 1000 / Math.max(40, delta);
-          if (currentKps > eng.peakKps) {
-            eng.peakKps = currentKps;
-            setPeakKps(currentKps);
-          }
-
-          const intensity = computePointIntensity(pointsGained, clampedDelta);
-          const specColor = getSpectrumColor(intensity);
-          if (scoreNodeRef.current) {
-            scoreNodeRef.current.style.color = specColor;
-          }
-
-          triggerDeltaPopup(pointsGained, specColor, '[SHIELD 2X!]');
-
-          if (progressNodeRef.current) {
-            progressNodeRef.current.textContent = `${eng.clearedCount} / ${TOTAL_CELLS}`;
-          }
-
-          if (eng.clearedCount >= TOTAL_CELLS) {
-            eng.runEndTime = now;
-            eng.isFinished = true;
-            setIsFinished(true);
-          } else {
-            syncOmniVisualState(board);
-          }
-
-          const roundedDelta = Math.round(delta);
-          samplesRef.current.push({
-            step: eng.clearedCount,
-            deltaMs: roundedDelta,
-            kps: Number(currentKps.toFixed(2)),
-            points: pointsGained,
-            isReinforced2x: true,
-          });
-          setLastSpeedMs(roundedDelta);
-          setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
-          setChartTick((t) => t + 1);
-          return;
-        }
-
-        // 2. Expand all branches whose head is ready to move to neighbors matching `mappedDigit`
-        let nextBranches: OmniBranch[] = [];
-        const lastTypedDigit =
-          eng.omniRecentDigits.length > 0
-            ? eng.omniRecentDigits[eng.omniRecentDigits.length - 1]
-            : null;
-        const isDoubleTapSameDigit = lastTypedDigit === mappedDigit;
+        // 1. Expand all branches naturally (NO shield prioritization):
+        // - If a branch's head has an uncracked shield and matches `mappedDigit`, it completes its 2nd hit on that head.
+        // - If a branch's head is ready to move, it expands to any available neighbors matching `mappedDigit`.
+        const nextBranches: OmniBranch[] = [];
+        let completedShield2xOnStep = false;
 
         for (let b = 0; b < eng.omniBranches.length; b++) {
           const br = eng.omniBranches[b];
           const headCell = board.cells[br.headIndex];
+
           if (headCell.isReinforced && !br.shieldCrackedOnHead) {
+            if (headCell.digit === mappedDigit) {
+              completedShield2xOnStep = true;
+              nextBranches.push({
+                ...br,
+                shieldCrackedOnHead: true,
+              });
+            }
             continue;
           }
 
@@ -1095,18 +988,7 @@ export const App: React.FC = () => {
           }
         }
 
-        // If double-tapping the same digit and among the candidate next targets at least one has a shield,
-        // prioritize the shielded target(s)!
-        if (isDoubleTapSameDigit && nextBranches.length > 1) {
-          const shieldedTargets = nextBranches.filter(
-            (cand) => board.cells[cand.headIndex].isReinforced
-          );
-          if (shieldedTargets.length > 0) {
-            nextBranches = shieldedTargets;
-          }
-        }
-
-        // If NO branch has a valid neighbor with `mappedDigit` -> MISTAKE!
+        // If NO branch matched `mappedDigit` -> MISTAKE!
         if (nextBranches.length === 0) {
           const errDelta =
             eng.lastKeystrokeTime === 0
@@ -1142,13 +1024,8 @@ export const App: React.FC = () => {
         }
 
         // ====================================================================
-        // 3. IDEA 1: QUANTUM MERGE (DIAMOND CONVERGENCE) + LASER SWEEP
+        // 2. IDEA 1: QUANTUM MERGE (DIAMOND CONVERGENCE) + LASER SWEEP
         // ====================================================================
-        // Group candidate branches by their new `headIndex`.
-        // Whenever M >= 2 branches converge onto the EXACT SAME `headIndex`:
-        // - ALL M branches in the diamond are merged & committed to `doneMask`!
-        // - A bright thin laser line sweeps through all cells of the M paths!
-        // - A tiered Quantum bonus (DOUBLE / TRIPLE / QUADRUPLE QUANTUM) is awarded!
         const groupsByHead = new Map<number, OmniBranch[]>();
         for (const cand of nextBranches) {
           const list = groupsByHead.get(cand.headIndex) || [];
@@ -1164,14 +1041,12 @@ export const App: React.FC = () => {
           if (group.length === 1) {
             deduplicated.push(group[0]);
           } else {
-            // QUANTUM CONVERGENCE! Merge all `group.length` branches!
             const mCount = group.length;
             if (mCount > maxQuantumMergeCount) {
               maxQuantumMergeCount = mCount;
             }
 
             const mergedVisited = new Set<number>();
-            const mergedTrailSet = new Set<number>();
             const headNeedsSecondHit =
               board.cells[headIdx].isReinforced &&
               group.some((g) => !g.shieldCrackedOnHead);
@@ -1182,9 +1057,6 @@ export const App: React.FC = () => {
                 mergedVisited.add(v);
               }
               for (const tIdx of g.trail) {
-                mergedTrailSet.add(tIdx);
-                // Immediately commit all diamond trail cells to `doneMask`
-                // (except `headIdx` if it still needs its 2nd shield hit)
                 if (tIdx === headIdx && headNeedsSecondHit) continue;
                 if (eng.doneMask[tIdx] === 0) {
                   eng.doneMask[tIdx] = 1;
@@ -1205,13 +1077,13 @@ export const App: React.FC = () => {
               shieldCrackedOnHead: !headNeedsSecondHit,
               color: group[0].color || OMNI_BRANCH_COLORS[0],
             });
-            void mergedTrailSet;
           }
         }
 
         if (deduplicated.length > 1) {
           const openBranches = deduplicated.filter(
             (br) =>
+              (board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead) ||
               countImmediateFreeNeighbors(br.headIndex, eng.doneMask, br.visitedSet) > 0
           );
           if (openBranches.length > 0) {
@@ -1222,7 +1094,7 @@ export const App: React.FC = () => {
           }
         }
 
-        // 4. Commit resolved cells to `doneMask` when down to 1 active branch (or common prefix)
+        // 3. Commit resolved cells to `doneMask` when down to 1 active branch (or common prefix)
         if (deduplicated.length === 1) {
           const winner = deduplicated[0];
           const headNeedsSecondHit =
@@ -1283,12 +1155,16 @@ export const App: React.FC = () => {
           eng.omniRecentTimestamps.shift();
         }
 
-        let pointsGained = BASE_POINTS + speedBonus;
+        const multiplier = completedShield2xOnStep ? 2 : 1;
+        let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
+        if (completedShield2xOnStep) {
+          eng.reinforcedHit += 1;
+          setReinforcedHitCount(eng.reinforcedHit);
+        }
+
         let completedSequenceName: string | undefined;
         let quantumTitle: string | undefined;
 
-        // Award Quantum Merge Bonus & trigger thin bright laser line across the diamond!
-        // Display the Quantum toast in the bottom score box via triggerDeltaPopup (just like other bonuses).
         if (maxQuantumMergeCount >= 2) {
           let quantumBonus = 300;
           let qColor = '#00f0ff';
@@ -1323,13 +1199,11 @@ export const App: React.FC = () => {
           eng.sequencesHit += 1;
           setSequencesHitCount(eng.sequencesHit);
 
-          triggerSequenceBanner(
-            matchedSeq.name,
-            matchedSeq.subtitle,
-            matchedSeq.bonusPoints,
-            matchedSeq.color,
-            matchedSeq.isPhiEasterEgg
-          );
+          if (matchedSeq.isPhiEasterEgg && boardWrapperRef.current) {
+            boardWrapperRef.current.classList.remove('phi-golden-flash');
+            void boardWrapperRef.current.offsetWidth;
+            boardWrapperRef.current.classList.add('phi-golden-flash');
+          }
         }
 
         eng.score += pointsGained;
@@ -1358,6 +1232,10 @@ export const App: React.FC = () => {
           tag = `[${quantumTitle} + ${completedSequenceName}]`;
         } else if (quantumTitle) {
           tag = `[${quantumTitle}]`;
+        } else if (completedShield2xOnStep && completedSequenceName) {
+          tag = `[2X + ${completedSequenceName}]`;
+        } else if (completedShield2xOnStep) {
+          tag = '[SHIELD 2X!]';
         } else if (anyUncrackedShieldNow) {
           tag = '[CRACKED!]';
         } else if (completedSequenceName) {
@@ -1386,7 +1264,7 @@ export const App: React.FC = () => {
           deltaMs: roundedDelta,
           kps: Number(currentKps.toFixed(2)),
           points: pointsGained,
-          isReinforced2x: false,
+          isReinforced2x: completedShield2xOnStep,
           sequenceName: quantumTitle || completedSequenceName,
         });
 
@@ -1469,13 +1347,11 @@ export const App: React.FC = () => {
               eng.sequencesHit += 1;
               setSequencesHitCount(eng.sequencesHit);
 
-              triggerSequenceBanner(
-                seqInst.pattern.name,
-                `${seqInst.pattern.subtitle} (${Math.round(avgSeqDelta)} ms/key)`,
-                seqBonus,
-                seqInst.pattern.color,
-                seqInst.pattern.isPhiEasterEgg
-              );
+              if (seqInst.pattern.isPhiEasterEgg && boardWrapperRef.current) {
+                boardWrapperRef.current.classList.remove('phi-golden-flash');
+                void boardWrapperRef.current.offsetWidth;
+                boardWrapperRef.current.classList.add('phi-golden-flash');
+              }
 
               for (const sIdx of seqInst.cellIndices) {
                 const sNode = cellNodesRef.current[sIdx];
@@ -1612,7 +1488,6 @@ export const App: React.FC = () => {
     triggerBoardErrorFlash,
     triggerQuantumLaserSweep,
     triggerDeltaPopup,
-    triggerSequenceBanner,
     updateLinearShieldVisibility,
     syncOmniVisualState,
   ]);
@@ -1652,111 +1527,42 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-shell">
-      {/* TOP HUD: PROGRESS & MODE ON LEFT, BIG GAME TITLE IN CENTER, TABS & ACTIONS ON RIGHT */}
-      <header className="top-hud">
-        <div className="hud-side hud-left">
-          <div className="progress-box">
-            <span className="hud-label">PROGRESS</span>
-            <span ref={progressNodeRef} className="hud-progress-val">
-              0 / {TOTAL_CELLS}
-            </span>
-          </div>
-          <button
-            type="button"
-            disabled={hasStarted}
-            className={`btn-arcade small ${gameMode === 'OMNI' ? 'gold' : 'cyan'} ${
-              hasStarted ? 'disabled-locked' : ''
-            }`}
-            title={
-              hasStarted
-                ? 'Mode is locked while a run is in progress. Press RESTART [ESC] to switch mode.'
-                : 'Switch between Linear and Omni-8 Free Direction mode'
-            }
-            onClick={(e) => {
-              e.currentTarget.blur();
-              handleQuickToggleMode();
-            }}
-          >
-            MODE: {gameMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}
-          </button>
-        </div>
-
-        <div className="hud-center-brand">
-          <h1 className="brand-title-big">FIGRID</h1>
-          <span className="brand-subtitle">
-            {gameMode === 'OMNI'
-              ? '21x13 OMNI-DIRECTIONAL QUANTUM MATRIX'
-              : '21x13 SPEED MATRIX'}
-          </span>
-        </div>
-
-        <div className="hud-side hud-right">
-          <button
-            type="button"
-            className={`btn-arcade small ${currentUser ? 'gold' : 'cyan'}`}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              setIsAuthOpen(true);
-            }}
-          >
-            {currentUser ? `PILOT: ${currentUser.username}` : 'LOGIN / REGISTER'}
-          </button>
-          <button
-            type="button"
-            className={`btn-arcade ${activeTab === 'LEADERBOARD' ? 'gold' : ''}`}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              setActiveTab((t) => {
-                const next = t === 'LEADERBOARD' ? 'GAME' : 'LEADERBOARD';
-                if (next === 'LEADERBOARD') refreshLeaderboard();
-                return next;
-              });
-            }}
-          >
-            {activeTab === 'LEADERBOARD' ? 'PLAY GAME' : 'LEADERBOARD'}
-          </button>
-          <button
-            type="button"
-            className="btn-arcade cyan"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              setIsBindingsOpen(true);
-            }}
-          >
-            SETTINGS
-          </button>
-          <button
-            type="button"
-            className="btn-arcade"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              setActiveTab('GAME');
-              startNewGame();
-            }}
-          >
-            RESTART [ESC]
-          </button>
-        </div>
-      </header>
-
-      {/* 8-BIT BANNER OVERLAY WHEN HIDDEN SEQUENCES OR QUANTUM MERGES ARE TRIGGERED */}
-      <div className="sequence-banners-overlay">
-        {activeBanners.map((b) => (
-          <div
-            key={b.id}
-            className={`seq-banner ${b.isPhi ? 'phi-special-banner' : ''}`}
-            style={{ borderColor: b.color, boxShadow: `0 0 18px ${b.color}55` }}
-          >
-            <div className="seq-banner-title" style={{ color: b.color }}>
-              {b.title}
-            </div>
-            <div className="seq-banner-sub">{b.subtitle}</div>
-            <div className="seq-banner-bonus" style={{ color: b.color }}>
-              {b.bonusText}
+      {/* MOBILE DEVICE WARNING OVERLAY (PC / DESKTOP KEYBOARD REQUIRED) */}
+      {isMobileDevice && !dismissedMobileWarning && (
+        <div className="mobile-pc-notice-overlay">
+          <div className="mobile-pc-notice-card">
+            <h1 className="brand-title-big">FIGRID</h1>
+            <h2 className="mobile-notice-heading">DESKTOP VERSION ONLY</h2>
+            <p className="mobile-notice-text">
+              FIGRID is a high-speed keyboard reflex game designed specifically for PC / Desktop
+              computers with a physical keyboard.
+            </p>
+            <p className="mobile-notice-sub">
+              Please open this page on a computer to play.
+            </p>
+            <div className="mobile-notice-actions">
+              <button
+                type="button"
+                className="btn-arcade gold"
+                onClick={() => {
+                  setDismissedMobileWarning(true);
+                  refreshLeaderboard();
+                  setActiveTab('LEADERBOARD');
+                }}
+              >
+                VIEW LEADERBOARD
+              </button>
+              <button
+                type="button"
+                className="btn-arcade small"
+                onClick={() => setDismissedMobileWarning(true)}
+              >
+                PREVIEW ANYWAY
+              </button>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {activeTab === 'LEADERBOARD' ? (
         <LeaderboardView
@@ -1767,185 +1573,183 @@ export const App: React.FC = () => {
           onBackToGame={() => setActiveTab('GAME')}
         />
       ) : (
-        <>
-          {/* MAIN WORKSPACE: 21x13 BOARD ON THE LEFT + LIVE SPEED CHART ON THE RIGHT */}
-          <main className="main-workspace">
-            <section ref={boardWrapperRef} className="board-section">
-              <div className="board-grid-stage">
-                {/* QUANTUM MERGE LASER LINE OVERLAY (SWEEPS FROM START TO END OF DIAMOND PATHS) */}
-                {quantumLasers.length > 0 && (
-                  <svg
-                    className="quantum-laser-svg"
-                    viewBox={`0 0 ${COLS * 38 - 2} ${ROWS * 32 - 2}`}
-                    aria-hidden="true"
-                  >
-                    {quantumLasers.map((line) => (
-                      <g key={line.id}>
-                        <polyline
-                          className="quantum-laser-glow"
-                          points={line.pointsAttr}
-                          pathLength={100}
-                          style={{ stroke: line.color }}
-                        />
-                        <polyline
-                          className="quantum-laser-core"
-                          points={line.pointsAttr}
-                          pathLength={100}
-                        />
-                      </g>
-                    ))}
-                  </svg>
-                )}
-
-                {/* BLURRY WRAP-AROUND GHOST TILES IN THE OUTER PADDING RING (OMNI-8 MODE) */}
-                {gameMode === 'OMNI' &&
-                  wrapGhosts.map((g) => (
-                    <div
-                      key={g.key}
-                      className="cell omni-wrap-ghost"
-                      style={{
-                        left: `${g.ghostCol * 38}px`,
-                        top: `${g.ghostRow * 32}px`,
-                      }}
-                    >
-                      {g.isReinforced && (
-                        <svg
-                          className="cell-shield-svg ghost-shield"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                        >
-                          <path
-                            className="shield-outline-path"
-                            d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                          />
-                        </svg>
-                      )}
-                      <span className="cell-digit">
-                        <FuturisticDigit digit={g.digit} />
-                      </span>
-                    </div>
+        /* MAIN WORKSPACE: 21x13 BOARD ON THE LEFT + HEADER BOX & SCORE/KPI BOX ON THE RIGHT */
+        <main className="main-workspace">
+          <section ref={boardWrapperRef} className="board-section">
+            <div className="board-grid-stage">
+              {/* QUANTUM MERGE LASER LINE OVERLAY (SWEEPS FROM START TO END OF DIAMOND PATHS) */}
+              {quantumLasers.length > 0 && (
+                <svg
+                  className="quantum-laser-svg"
+                  viewBox={`0 0 ${COLS * 38 - 2} ${ROWS * 32 - 2}`}
+                  aria-hidden="true"
+                >
+                  {quantumLasers.map((line) => (
+                    <g key={line.id}>
+                      <polyline
+                        className="quantum-laser-glow"
+                        points={line.pointsAttr}
+                        pathLength={100}
+                        style={{ stroke: line.color }}
+                      />
+                      <polyline
+                        className="quantum-laser-core"
+                        points={line.pointsAttr}
+                        pathLength={100}
+                      />
+                    </g>
                   ))}
-
-                <div className="board-grid-21x13">
-                  {board.cells.map((cell, idx) => (
-                    <div
-                      key={idx}
-                      ref={(el) => {
-                        cellNodesRef.current[idx] = el;
-                      }}
-                      className="cell"
-                    >
-                      {cell.isReinforced && (
-                        <svg
-                          className="cell-shield-svg"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                        >
-                          <path
-                            className="shield-outline-path"
-                            d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                          />
-                        </svg>
-                      )}
-                      <span className="cell-digit">
-                        <FuturisticDigit digit={cell.digit} />
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {isFinished && (
-                <div className="victory-overlay">
-                  <div className="victory-card">
-                    <h2>BOARD CLEARED!</h2>
-                    <p className="victory-score">
-                      FINAL SCORE:{' '}
-                      <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
-                    </p>
-                    <p className="victory-stats">
-                      Total Time:{' '}
-                      {engineRef.current.runEndTime >= engineRef.current.runStartTime &&
-                      engineRef.current.runStartTime > 0
-                        ? `${((engineRef.current.runEndTime - engineRef.current.runStartTime) / 1000).toFixed(2)}s`
-                        : '--'}{' '}
-                      | Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} | Secret
-                      Sequences: {sequencesHitCount}/{board.sequences.length}
-                    </p>
-
-                    {!hasSubmittedScore ? (
-                      <div className="nick-entry-box">
-                        <span className="nick-prompt">ENTER YOUR 3-LETTER INITIALS:</span>
-                        <div className="nick-slots">
-                          {nickLetters.map((char, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              className={`nick-slot ${nickCursor === idx ? 'active' : ''}`}
-                              onClick={() => setNickCursor(idx)}
-                            >
-                              {char}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          className="btn-arcade gold"
-                          onClick={() => void handleSaveScoreToLeaderboard()}
-                        >
-                          SAVE TO LEADERBOARD [ENTER]
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="nick-saved-msg">SCORE SAVED TO LEADERBOARD!</p>
-                    )}
-
-                    <button
-                      type="button"
-                      className="btn-arcade cyan"
-                      onClick={() => startNewGame()}
-                    >
-                      PLAY AGAIN [ESC]
-                    </button>
-                  </div>
-                </div>
+                </svg>
               )}
-            </section>
 
-            {/* RIGHT PANEL: LIVE SPEED CHART */}
-            <SpeedChartPanel
-              samplesRef={samplesRef}
-              renderTick={chartTick}
-              lastSpeedMs={lastSpeedMs}
-              avgSpeedMs={avgSpeedMs}
-              peakKps={peakKps}
-              mistakesCount={mistakesCount}
-              sequencesHitCount={sequencesHitCount}
-              totalSequencesCount={board.sequences.length}
-              reinforcedHitCount={reinforcedHitCount}
-              totalReinforcedCount={board.totalReinforcedCount}
-            />
-          </main>
+              {/* BLURRY WRAP-AROUND GHOST TILES IN THE OUTER PADDING RING (OMNI-8 MODE) */}
+              {gameMode === 'OMNI' &&
+                wrapGhosts.map((g) => (
+                  <div
+                    key={g.key}
+                    className="cell omni-wrap-ghost"
+                    style={{
+                      left: `${g.ghostCol * 38}px`,
+                      top: `${g.ghostRow * 32}px`,
+                    }}
+                  >
+                    {g.isReinforced && (
+                      <svg
+                        className="cell-shield-svg ghost-shield"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          className="shield-outline-path"
+                          d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                        />
+                      </svg>
+                    )}
+                    <span className="cell-digit">
+                      <FuturisticDigit digit={g.digit} />
+                    </span>
+                  </div>
+                ))}
 
-          {/* BOTTOM HORIZONTAL SCORE PANEL (CENTERED BOX, NOT FULL WIDTH) */}
-          <footer className="bottom-score-bar">
-            <div className="bottom-score-box">
-              <div ref={deltaPopupRootRef} className="delta-popup-layer" />
-              <div className="bottom-score-top-row">
-                <span className="hud-label">TOTAL SCORE</span>
-                <span ref={lastDeltaBadgeRef} className="last-delta-pill">
-                  +0
-                </span>
-              </div>
-              <div className="bottom-score-digits-row">
-                <span ref={scoreNodeRef} className="score-big-digits">
-                  0
-                </span>
+              <div className="board-grid-21x13">
+                {board.cells.map((cell, idx) => (
+                  <div
+                    key={idx}
+                    ref={(el) => {
+                      cellNodesRef.current[idx] = el;
+                    }}
+                    className="cell"
+                  >
+                    {cell.isReinforced && (
+                      <svg
+                        className="cell-shield-svg"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          className="shield-outline-path"
+                          d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                        />
+                      </svg>
+                    )}
+                    <span className="cell-digit">
+                      <FuturisticDigit digit={cell.digit} />
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-          </footer>
-        </>
+
+            {isFinished && (
+              <div className="victory-overlay">
+                <div className="victory-card">
+                  <h2>BOARD CLEARED!</h2>
+                  <p className="victory-score">
+                    FINAL SCORE:{' '}
+                    <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
+                  </p>
+                  <p className="victory-stats">
+                    Total Time:{' '}
+                    {engineRef.current.runEndTime >= engineRef.current.runStartTime &&
+                    engineRef.current.runStartTime > 0
+                      ? `${((engineRef.current.runEndTime - engineRef.current.runStartTime) / 1000).toFixed(2)}s`
+                      : '--'}{' '}
+                    | Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} | Secret
+                    Sequences: {sequencesHitCount}/{board.sequences.length}
+                  </p>
+
+                  {!hasSubmittedScore ? (
+                    <div className="nick-entry-box">
+                      <span className="nick-prompt">ENTER YOUR 3-LETTER INITIALS:</span>
+                      <div className="nick-slots">
+                        {nickLetters.map((char, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className={`nick-slot ${nickCursor === idx ? 'active' : ''}`}
+                            onClick={() => setNickCursor(idx)}
+                          >
+                            {char}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-arcade gold"
+                        onClick={() => void handleSaveScoreToLeaderboard()}
+                      >
+                        SAVE TO LEADERBOARD [ENTER]
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="nick-saved-msg">SCORE SAVED TO LEADERBOARD!</p>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn-arcade cyan"
+                    onClick={() => startNewGame()}
+                  >
+                    PLAY AGAIN [ESC]
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* RIGHT COLUMN: TOP HEADER BOX + BOTTOM SCORE & KPI BOX (FLUSH WITH BOARD TOP & BOTTOM) */}
+          <SpeedChartPanel
+            gameMode={gameMode}
+            hasStarted={hasStarted}
+            currentUser={currentUser}
+            progressNodeRef={progressNodeRef}
+            onQuickToggleMode={handleQuickToggleMode}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenLeaderboard={() => {
+              refreshLeaderboard();
+              setActiveTab('LEADERBOARD');
+            }}
+            onOpenSettings={() => setIsBindingsOpen(true)}
+            onRestart={() => startNewGame()}
+            scoreNodeRef={scoreNodeRef}
+            lastDeltaBadgeRef={lastDeltaBadgeRef}
+            deltaPopupRootRef={deltaPopupRootRef}
+            lastSpeedMs={lastSpeedMs}
+            avgSpeedMs={avgSpeedMs}
+            peakKps={peakKps}
+            mistakesCount={mistakesCount}
+            sequencesHitCount={sequencesHitCount}
+            totalSequencesCount={board.sequences.length}
+            reinforcedHitCount={reinforcedHitCount}
+            totalReinforcedCount={board.totalReinforcedCount}
+          />
+        </main>
       )}
+
+      {/* BARELY VISIBLE COPYRIGHT FOOTER AT THE VERY BOTTOM */}
+      <footer className="subtle-copyright-footer">
+        &copy; {new Date().getFullYear()} FIGRID
+      </footer>
 
       {/* SETTINGS & KEYBINDINGS MODAL */}
       <KeyBindingsModal
