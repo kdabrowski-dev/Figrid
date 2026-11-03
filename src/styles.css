@@ -619,12 +619,19 @@ body {
     inset 0 0 8px var(--overlap-color-2, rgba(255, 234, 0, 0.35));
 }
 
-/* Available next-step neighbor tiles in OMNI-8 (Subtle warm-ivory dashed frame, clearly distinct from solid colored heads & trails) */
+/* Current tile to press in LINEAR mode & Available next-step neighbor tiles in OMNI-8
+   (Subtle warm-ivory dashed frame with #fef08a digit so tiles waiting to be clicked look identical!) */
+.cell.linear-target:not(.shield-cracked),
 .cell.omni-available:not(.active):not(.omni-blurry-head):not(.omni-branch-trail) {
   background-color: rgba(254, 243, 199, 0.08);
   border: 1px dashed rgba(253, 224, 71, 0.55);
   box-shadow: inset 0 0 5px rgba(253, 224, 71, 0.12);
   color: #fef08a;
+}
+
+.cell.linear-target:not(.shield-cracked) .cell-digit {
+  color: #fef08a !important;
+  text-shadow: none !important;
 }
 
 /* Quantum Diamond Convergence: SVG Thin Bright Laser Line Overlay & Tile Pulse */
@@ -1363,6 +1370,92 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.leaderboard-scope-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.leaderboard-scope-btn {
+  background: #0a0d15;
+  border: 2px solid #242c42;
+  color: #94a3b8;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.leaderboard-scope-btn:hover {
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.leaderboard-scope-btn.active {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.1);
+  box-shadow: inset 0 0 10px rgba(0, 240, 255, 0.18);
+}
+
+.leaderboard-scope-btn.personal.active {
+  border-color: var(--accent-magenta);
+  color: var(--accent-magenta);
+  background: rgba(255, 0, 229, 0.1);
+  box-shadow: inset 0 0 10px rgba(255, 0, 229, 0.18);
+}
+
+.personal-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.personal-summary-item {
+  background: #0c0f18;
+  border: 1px solid #1e2638;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.personal-login-prompt {
+  background: #0c0f18;
+  border: 1.5px dashed #334155;
+  padding: 32px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.personal-login-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.pb-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 3px 6px;
+  background: rgba(255, 234, 0, 0.16);
+  color: var(--accent-yellow);
+  border: 1px solid var(--accent-yellow);
+  vertical-align: middle;
+}
+
+.leaderboard-table tr.current-pilot-row {
+  background: rgba(0, 240, 255, 0.06);
 }
 
 .leaderboard-mode-tabs {

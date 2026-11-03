@@ -14,7 +14,6 @@ import {
   getAvailableOmniNeighbors,
   getWrapGhostProjectionsForHeads,
   WrapGhostProjection,
-  countImmediateFreeNeighbors,
   detectOmniSequenceMatch,
   getSpectrumColor,
   computePointIntensity,
@@ -32,6 +31,7 @@ import {
   LeaderboardView,
   fetchInitialLeaderboard,
   saveLeaderboardToStorage,
+  appendLocalMyRun,
 } from './LeaderboardView';
 import {
   UserProfile,
@@ -635,7 +635,7 @@ export const App: React.FC = () => {
       eng.currentIndex = 0;
       eng.shieldIntactOnCurrent = board.cells[0].isReinforced;
       const firstNode = cellNodesRef.current[0];
-      if (firstNode) firstNode.classList.add('active');
+      if (firstNode) firstNode.classList.add('linear-target');
       setWrapGhosts([]);
       if (progressNodeRef.current) {
         progressNodeRef.current.textContent = `0 / ${TOTAL_CELLS}`;
@@ -704,6 +704,13 @@ export const App: React.FC = () => {
 
     if (backendSaved) {
       setIsBackendOnline(true);
+    }
+
+    if (currentUser) {
+      appendLocalMyRun({
+        ...newEntry,
+        username: newEntry.username || currentUser.username,
+      });
     }
 
     setLeaderboard((prev) => {
@@ -1080,21 +1087,32 @@ export const App: React.FC = () => {
           }
         }
 
-        if (deduplicated.length > 1) {
-          const openBranches = deduplicated.filter(
-            (br) =>
-              (board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead) ||
-              countImmediateFreeNeighbors(br.headIndex, eng.doneMask, br.visitedSet) > 0
-          );
-          if (openBranches.length > 0) {
-            deduplicated = openBranches;
+        // Check if any branch has cleared all 273 cells on the board (and cracked its head shield if reinforced)
+        for (const br of deduplicated) {
+          const headNeedsSecondHit =
+            board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead;
+          let uncommittedCleared = 0;
+          for (const tIdx of br.trail) {
+            if (tIdx === br.headIndex && headNeedsSecondHit) continue;
+            if (eng.doneMask[tIdx] === 0) {
+              uncommittedCleared += 1;
+            }
           }
-          if (deduplicated.length > 6) {
-            deduplicated = deduplicated.slice(0, 6);
+          if (eng.clearedCount + uncommittedCleared >= TOTAL_CELLS && !headNeedsSecondHit) {
+            deduplicated = [br];
+            break;
           }
         }
 
-        // 3. Commit resolved cells to `doneMask` when down to 1 active branch (or common prefix)
+        if (deduplicated.length > 12) {
+          deduplicated = deduplicated.slice(0, 12);
+        }
+
+        // 3. Commit resolved cells to `doneMask`:
+        //    - If down to 1 active branch, commit its entire resolved trail.
+        //    - If multiple branches remain, commit ANY cell that is present in EVERY active branch's
+        //      resolved trail (handles both common prefixes AND symmetric swaps like A->B vs B->A
+        //      when two or more identical digits are pressed!).
         if (deduplicated.length === 1) {
           const winner = deduplicated[0];
           const headNeedsSecondHit =
@@ -1118,28 +1136,41 @@ export const App: React.FC = () => {
           winner.trail = [winner.headIndex];
           winner.visitedSet = new Set([winner.headIndex]);
         } else {
-          const minTrailLen = Math.min(...deduplicated.map((b) => b.trail.length));
-          let commonPrefixCount = 0;
-          for (let i = 0; i < minTrailLen - 1; i++) {
-            const idxAtI = deduplicated[0].trail[i];
-            if (deduplicated.every((b) => b.trail[i] === idxAtI)) {
-              commonPrefixCount = i + 1;
-              if (eng.doneMask[idxAtI] === 0) {
-                eng.doneMask[idxAtI] = 1;
+          const resolvedSets = deduplicated.map((br) => {
+            const headNeedsSecondHit =
+              board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead;
+            const resolved = new Set<number>();
+            const limit = headNeedsSecondHit ? br.trail.length - 1 : br.trail.length;
+            for (let i = 0; i < limit; i++) {
+              resolved.add(br.trail[i]);
+            }
+            return resolved;
+          });
+
+          const firstResolved = resolvedSets[0];
+          const universallyResolved = new Set<number>();
+          for (const candidateCell of firstResolved) {
+            if (resolvedSets.every((s) => s.has(candidateCell))) {
+              universallyResolved.add(candidateCell);
+              if (eng.doneMask[candidateCell] === 0) {
+                eng.doneMask[candidateCell] = 1;
                 eng.clearedCount += 1;
-                const cNode = cellNodesRef.current[idxAtI];
+                const cNode = cellNodesRef.current[candidateCell];
                 if (cNode) {
                   cNode.className = 'cell done';
                   cNode.style.setProperty('--shield-alpha', '0');
                 }
               }
-            } else {
-              break;
             }
           }
-          if (commonPrefixCount > 0) {
+
+          if (universallyResolved.size > 0) {
             for (const br of deduplicated) {
-              br.trail = br.trail.slice(commonPrefixCount);
+              const remainingTrail = br.trail.filter(
+                (cIdx) => !universallyResolved.has(cIdx) || cIdx === br.headIndex
+              );
+              br.trail = remainingTrail.length > 0 ? remainingTrail : [br.headIndex];
+              br.visitedSet = new Set(br.trail);
             }
           }
         }
@@ -1395,7 +1426,13 @@ export const App: React.FC = () => {
         triggerDeltaPopup(pointsGained, specColor, tag || undefined);
 
         if (currentNode) {
-          currentNode.classList.remove('active', 'error', 'shield-cracked', 'shield-approaching');
+          currentNode.classList.remove(
+            'active',
+            'linear-target',
+            'error',
+            'shield-cracked',
+            'shield-approaching'
+          );
           currentNode.style.setProperty('--shield-alpha', '0');
           currentNode.classList.add('done');
         }
@@ -1413,7 +1450,7 @@ export const App: React.FC = () => {
           const nextNode = cellNodesRef.current[nextIndex];
           if (nextNode) {
             nextNode.classList.remove('shield-approaching');
-            nextNode.classList.add('active');
+            nextNode.classList.add('linear-target');
           }
           updateLinearShieldVisibility(nextIndex, board);
         } else {
@@ -1568,8 +1605,10 @@ export const App: React.FC = () => {
         <LeaderboardView
           entries={leaderboard}
           defaultMode={gameMode}
+          currentUser={currentUser}
           isBackendOnline={isBackendOnline}
           onRefresh={refreshLeaderboard}
+          onOpenAuth={() => setIsAuthOpen(true)}
           onBackToGame={() => setActiveTab('GAME')}
         />
       ) : (

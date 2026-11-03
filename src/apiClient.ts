@@ -135,17 +135,31 @@ export async function apiUpdateUserSettings(payload: {
   }
 }
 
+function mapRawScoreEntry(item: Record<string, unknown>): LeaderboardEntry {
+  return {
+    id: String(item.id ?? `score-${Math.random()}`),
+    nick: String(item.nick ?? 'AAA').slice(0, 3).toUpperCase(),
+    score: Number(item.score ?? 0),
+    mode: item.mode === 'OMNI' ? 'OMNI' : 'LINEAR',
+    totalTimeSec: Number(item.totalTimeSec ?? 0),
+    avgSpeedMs: Number(item.avgSpeedMs ?? 0),
+    mistakes: Number(item.mistakes ?? 0),
+    date: String(item.date ?? new Date().toISOString().slice(0, 10)),
+    username: item.username ? String(item.username) : undefined,
+  };
+}
+
 export async function apiFetchSharedLeaderboard(): Promise<{
   entries: LeaderboardEntry[];
   online: boolean;
 }> {
   try {
     const [linearRes, omniRes] = await Promise.all([
-      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=LINEAR&limit=100`, {
+      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=LINEAR&limit=200`, {
         method: 'GET',
         headers: buildHeaders(false),
       }),
-      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=OMNI&limit=100`, {
+      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=OMNI&limit=200`, {
         method: 'GET',
         headers: buildHeaders(false),
       }),
@@ -158,23 +172,32 @@ export async function apiFetchSharedLeaderboard(): Promise<{
       const rawOmni = Array.isArray(omniJson?.data) ? omniJson.data : [];
       const combined = [...rawLinear, ...rawOmni];
 
-      const entries: LeaderboardEntry[] = combined.map((item: Record<string, unknown>) => ({
-        id: String(item.id ?? `score-${Math.random()}`),
-        nick: String(item.nick ?? 'AAA').slice(0, 3).toUpperCase(),
-        score: Number(item.score ?? 0),
-        mode: item.mode === 'OMNI' ? 'OMNI' : 'LINEAR',
-        totalTimeSec: Number(item.totalTimeSec ?? 0),
-        avgSpeedMs: Number(item.avgSpeedMs ?? 0),
-        mistakes: Number(item.mistakes ?? 0),
-        date: String(item.date ?? new Date().toISOString().slice(0, 10)),
-        username: item.username ? String(item.username) : undefined,
-      }));
+      const entries: LeaderboardEntry[] = combined.map((item: Record<string, unknown>) =>
+        mapRawScoreEntry(item)
+      );
       return { entries, online: true };
     }
   } catch {
     // Backend server offline -> fallback handled by caller
   }
   return { entries: [], online: false };
+}
+
+export async function apiFetchMyRuns(): Promise<LeaderboardEntry[]> {
+  const token = getStoredToken();
+  if (!token) return [];
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/leaderboard/me`, {
+      method: 'GET',
+      headers: buildHeaders(true),
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const raw = Array.isArray(json?.data) ? json.data : [];
+    return raw.map((item: Record<string, unknown>) => mapRawScoreEntry(item));
+  } catch {
+    return [];
+  }
 }
 
 export async function apiSubmitScoreToBackend(entry: {
