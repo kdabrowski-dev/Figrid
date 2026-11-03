@@ -662,9 +662,13 @@ export const App: React.FC = () => {
     }
   }, [board, gameMode, activeTab, updateLinearShieldVisibility, syncOmniVisualState]);
 
-  // Submit 3-letter arcade nick to Shared Backend + localStorage fallback
+  // Submit 3-letter arcade nick to Shared Backend + localStorage fallback (REQUIRES LOGGED-IN ACCOUNT)
   const handleSaveScoreToLeaderboard = useCallback(async () => {
     if (hasSubmittedScore) return;
+    if (!currentUser) {
+      setIsAuthOpen(true);
+      return;
+    }
     const eng = engineRef.current;
     const nick = nickLetters.join('').toUpperCase();
     const totalDurationMs =
@@ -759,6 +763,13 @@ export const App: React.FC = () => {
         if (e.key === 'Escape') {
           e.preventDefault();
           startNewGame();
+          return;
+        }
+        if (!currentUser) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            setIsAuthOpen(true);
+          }
           return;
         }
         if (e.key === 'Enter') {
@@ -1518,6 +1529,7 @@ export const App: React.FC = () => {
     activeTab,
     isBindingsOpen,
     isAuthOpen,
+    currentUser,
     hasSubmittedScore,
     nickCursor,
     startNewGame,
@@ -1718,28 +1730,50 @@ export const App: React.FC = () => {
                   </p>
 
                   {!hasSubmittedScore ? (
-                    <div className="nick-entry-box">
-                      <span className="nick-prompt">ENTER YOUR 3-LETTER INITIALS:</span>
-                      <div className="nick-slots">
-                        {nickLetters.map((char, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            className={`nick-slot ${nickCursor === idx ? 'active' : ''}`}
-                            onClick={() => setNickCursor(idx)}
-                          >
-                            {char}
-                          </button>
-                        ))}
+                    currentUser ? (
+                      <div className="nick-entry-box">
+                        <span className="nick-prompt">
+                          PILOT [{currentUser.username}] // 3-LETTER INITIALS:
+                        </span>
+                        <div className="nick-slots">
+                          {nickLetters.map((char, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              className={`nick-slot ${nickCursor === idx ? 'active' : ''}`}
+                              onClick={() => setNickCursor(idx)}
+                            >
+                              {char}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-arcade gold"
+                          onClick={() => void handleSaveScoreToLeaderboard()}
+                        >
+                          SAVE TO LEADERBOARD [ENTER]
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className="btn-arcade gold"
-                        onClick={() => void handleSaveScoreToLeaderboard()}
-                      >
-                        SAVE TO LEADERBOARD [ENTER]
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="nick-entry-box">
+                        <span className="nick-prompt">
+                          ACCOUNT REQUIRED TO SAVE SCORE TO LEADERBOARD
+                        </span>
+                        <p className="victory-stats">
+                          Create an account or log in now to record this run in the global ranking
+                          and your personal Hall of Fame. Without logging in, this score will not be
+                          saved.
+                        </p>
+                        <button
+                          type="button"
+                          className="btn-arcade gold"
+                          onClick={() => setIsAuthOpen(true)}
+                        >
+                          LOGIN / REGISTER TO SAVE SCORE [ENTER]
+                        </button>
+                      </div>
+                    )
                   ) : (
                     <p className="nick-saved-msg">SCORE SAVED TO LEADERBOARD!</p>
                   )}
