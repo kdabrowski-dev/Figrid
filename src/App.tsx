@@ -6,6 +6,7 @@ import {
   OMNI_CENTER_INDEX,
   SHIELD_REVEAL_DISTANCE,
   OMNI_BRANCH_COLORS,
+  CURRENT_GAME_VERSION,
   GameMode,
   GeneratedBoard,
   generateFairBoard,
@@ -14,7 +15,7 @@ import {
   getAvailableOmniNeighbors,
   getWrapGhostProjectionsForHeads,
   WrapGhostProjection,
-  detectOmniSequenceMatch,
+  getQuantumMergeTierInfo,
   getSpectrumColor,
   computePointIntensity,
   KeyBindingsMap,
@@ -35,15 +36,23 @@ import {
 } from './LeaderboardView';
 import {
   UserProfile,
+  KeystrokeTelemetryEvent,
   apiFetchCurrentUser,
   apiUpdateUserSettings,
-  apiSubmitScoreToBackend,
+  apiStartGameSession,
+  apiFinishGameSession,
 } from './apiClient';
 import { AuthModal } from './AuthModal';
+import { WelcomeGuideModal } from './WelcomeGuideModal';
+import { ReleaseNotesModal } from './ReleaseNotesModal';
+import { BadgeIcon, UserBadge } from './BadgeIcons';
 
 const BASE_POINTS = 12;
 const MIN_DELTA_MS = 50;
 const MAX_BONUS_DELTA_MS = 1000;
+
+const WELCOME_SEEN_KEY = 'figrid_welcome_guide_seen_v1';
+const RELEASE_NOTES_SEEN_KEY = 'figrid_release_notes_seen_v0_0_2';
 
 interface OmniBranch {
   headIndex: number;
@@ -57,22 +66,18 @@ interface QuantumLaserLine {
   id: number;
   pointsAttr: string;
   color: string;
+  isSuper?: boolean;
 }
 
 function detectMobilePhone(): boolean {
   if (typeof window === 'undefined') return false;
   const ua = navigator.userAgent || '';
-  const isMobileUA = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
-  const isSmallTouch =
-    window.innerWidth <= 820 &&
-    (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
-  return isMobileUA || isSmallTouch;
+  const isTouchPhone =
+    /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
+    (window.innerWidth <= 760 && navigator.maxTouchPoints > 1);
+  return isTouchPhone;
 }
 
-/**
- * Converts a sequence of board cell indices into SVG polyline coordinate strings.
- * Each cell in `.board-grid-21x13` is 36x30px with a 2px gap (stride: 38px X, 32px Y).
- */
 function buildSvgPolylinesForTrail(trail: number[]): string[] {
   if (trail.length < 2) return [];
   const polylines: string[] = [];
@@ -88,9 +93,8 @@ function buildSvgPolylinesForTrail(trail: number[]): string[] {
     if (i > 0) {
       const prevIdx = trail[i - 1];
       const prevR = Math.floor(prevIdx / COLS);
-      const rawDr = Math.abs(r - prevR);
-      const rawDc = Math.abs(c - (prevIdx % COLS));
-      if (rawDr > 4 || rawDc > 4) {
+      const prevC = prevIdx % COLS;
+      if (Math.abs(r - prevR) > 3 || Math.abs(c - prevC) > 3) {
         if (currentPoints.length >= 2) {
           polylines.push(currentPoints.join(' '));
         }
@@ -107,10 +111,6 @@ function buildSvgPolylinesForTrail(trail: number[]): string[] {
   return polylines;
 }
 
-/**
- * Assigns a unique color from OMNI_BRANCH_COLORS to each active branch,
- * preserving existing branch colors when possible and avoiding duplicates.
- */
 function assignDistinctBranchColors(branches: OmniBranch[]): void {
   const usedColors = new Set<string>();
   for (let i = 0; i < branches.length; i++) {
@@ -140,6 +140,21 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'GAME' | 'LEADERBOARD'>('GAME');
   const [isBindingsOpen, setIsBindingsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem(WELCOME_SEEN_KEY);
+    } catch {
+      return false;
+    }
+  });
+  const [isReleaseNotesOpen, setIsReleaseNotesOpen] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem(WELCOME_SEEN_KEY)) && !localStorage.getItem(RELEASE_NOTES_SEEN_KEY);
+    } catch {
+      return false;
+    }
+  });
+
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isBackendOnline, setIsBackendOnline] = useState<boolean>(false);
   const [isMobileDevice, setIsMobileDevice] = useState<boolean>(() => detectMobilePhone());
@@ -150,6 +165,11 @@ export const App: React.FC = () => {
   const [nickLetters, setNickLetters] = useState<string[]>(['A', 'A', 'A']);
   const [nickCursor, setNickCursor] = useState<number>(0);
   const [hasSubmittedScore, setHasSubmittedScore] = useState<boolean>(false);
+  const [botAlertInfo, setBotAlertInfo] = useState<{
+    reason: string;
+    badge?: UserBadge | null;
+  } | null>(null);
+  const [unlockedBadgesOnRun, setUnlockedBadgesOnRun] = useState<UserBadge[]>([]);
 
   // Telemetry state for right panel and summary
   const [, setChartTick] = useState(0);
@@ -157,6 +177,7 @@ export const App: React.FC = () => {
   const [avgSpeedMs, setAvgSpeedMs] = useState<number | null>(null);
   const [peakKps, setPeakKps] = useState<number>(0);
   const [sequencesHitCount, setSequencesHitCount] = useState<number>(0);
+  const [quantumMergesCount, setQuantumMergesCount] = useState<number>(0);
   const [reinforcedHitCount, setReinforcedHitCount] = useState<number>(0);
   const [mistakesCount, setMistakesCount] = useState<number>(0);
   const [isFinished, setIsFinished] = useState<boolean>(false);
@@ -173,8 +194,13 @@ export const App: React.FC = () => {
   const boardWrapperRef = useRef<HTMLDivElement | null>(null);
   const badgeFadeTimeoutRef = useRef<number | null>(null);
 
-  // Set of currently held physical key codes
+  // Set of currently held physical key codes + keydown timestamp map for dwell time verification
   const pressedPhysicalKeysRef = useRef<Set<string>>(new Set());
+  const activeKeyDownEventMapRef = useRef<
+    Map<string, { eventRef: KeystrokeTelemetryEvent; downTime: number }>
+  >(new Map());
+  const telemetryEventsRef = useRef<KeystrokeTelemetryEvent[]>([]);
+  const serverSessionTokenRef = useRef<string | null>(null);
 
   // Real-time mutable game engine state (0ms input lag)
   const engineRef = useRef({
@@ -189,9 +215,7 @@ export const App: React.FC = () => {
     clearedCount: 0,
     omniBranches: [] as OmniBranch[],
     omniVisualCells: new Set<number>(),
-    omniRecentDigits: [] as number[],
-    omniRecentTimestamps: [] as number[],
-    omniTriggeredSeqKeys: new Set<string>(),
+    quantumMerges: 0,
 
     // Shared scoring & telemetry state
     runStartTime: 0,
@@ -210,6 +234,27 @@ export const App: React.FC = () => {
   });
 
   const samplesRef = useRef<SpeedSample[]>([]);
+
+  const handleCloseWelcome = () => {
+    try {
+      localStorage.setItem(WELCOME_SEEN_KEY, '1');
+      if (!localStorage.getItem(RELEASE_NOTES_SEEN_KEY)) {
+        setIsReleaseNotesOpen(true);
+      }
+    } catch {
+      // ignore
+    }
+    setIsWelcomeOpen(false);
+  };
+
+  const handleCloseReleaseNotes = () => {
+    try {
+      localStorage.setItem(RELEASE_NOTES_SEEN_KEY, '1');
+    } catch {
+      // ignore
+    }
+    setIsReleaseNotesOpen(false);
+  };
 
   useEffect(() => {
     const onResize = () => {
@@ -244,12 +289,18 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Load initial leaderboard + restore JWT user session if logged in
+  // Load initial leaderboard + restore JWT user session + start initial server game session
   useEffect(() => {
     refreshLeaderboard();
     apiFetchCurrentUser().then((user) => {
       if (user) {
         applyUserProfileSettings(user);
+      }
+    });
+    apiStartGameSession(loadGameMode()).then((session) => {
+      if (session && engineRef.current.totalKeystrokes === 0 && !engineRef.current.isFinished) {
+        serverSessionTokenRef.current = session.sessionToken;
+        setBoard(session.board);
       }
     });
   }, [refreshLeaderboard, applyUserProfileSettings]);
@@ -276,47 +327,55 @@ export const App: React.FC = () => {
   }, []);
 
   /**
-   * Triggers the bright thin laser line sweep animation across all cells of a Quantum Diamond merge!
+   * Triggers the bright laser line sweep animation across all cells of a Quantum Merge!
+   * For Super-Quantum tiers (> 4: PENTA, HEXA, HEPTA, OCTA), triggers a stronger pulse & board shockwave!
    */
-  const triggerQuantumLaserSweep = useCallback((trails: number[][], color: string) => {
-    const newLines: QuantumLaserLine[] = [];
-    const diamondCells = new Set<number>();
+  const triggerQuantumLaserSweep = useCallback(
+    (trails: number[][], color: string, isSuper = false) => {
+      const newLines: QuantumLaserLine[] = [];
+      const diamondCells = new Set<number>();
 
-    for (const trail of trails) {
-      for (const idx of trail) {
-        diamondCells.add(idx);
+      for (const trail of trails) {
+        for (const idx of trail) {
+          diamondCells.add(idx);
+        }
+        const segments = buildSvgPolylinesForTrail(trail);
+        for (const pointsAttr of segments) {
+          newLines.push({
+            id: engineRef.current.laserCounter++,
+            pointsAttr,
+            color,
+            isSuper,
+          });
+        }
       }
-      const segments = buildSvgPolylinesForTrail(trail);
-      for (const pointsAttr of segments) {
-        newLines.push({
-          id: engineRef.current.laserCounter++,
-          pointsAttr,
-          color,
-        });
+
+      if (isSuper && boardWrapperRef.current) {
+        boardWrapperRef.current.classList.remove('board-super-quantum-flash');
+        void boardWrapperRef.current.offsetWidth;
+        boardWrapperRef.current.classList.add('board-super-quantum-flash');
       }
-    }
 
-    for (const cellIdx of diamondCells) {
-      const node = cellNodesRef.current[cellIdx];
-      if (node) {
-        node.classList.remove('quantum-diamond-pulse');
-        void node.offsetWidth;
-        node.classList.add('quantum-diamond-pulse');
+      for (const cellIdx of diamondCells) {
+        const node = cellNodesRef.current[cellIdx];
+        if (node) {
+          node.classList.remove('quantum-diamond-pulse', 'super-quantum-cell-pulse');
+          void node.offsetWidth;
+          node.classList.add(isSuper ? 'super-quantum-cell-pulse' : 'quantum-diamond-pulse');
+        }
       }
-    }
 
-    if (newLines.length > 0) {
-      setQuantumLasers((prev) => [...prev, ...newLines]);
-      const lineIds = new Set(newLines.map((l) => l.id));
-      window.setTimeout(() => {
-        setQuantumLasers((prev) => prev.filter((l) => !lineIds.has(l.id)));
-      }, 780);
-    }
-  }, []);
+      if (newLines.length > 0) {
+        setQuantumLasers((prev) => [...prev, ...newLines]);
+        const lineIds = new Set(newLines.map((l) => l.id));
+        window.setTimeout(() => {
+          setQuantumLasers((prev) => prev.filter((l) => !lineIds.has(l.id)));
+        }, isSuper ? 1050 : 780);
+      }
+    },
+    []
+  );
 
-  /**
-   * LINEAR MODE: Updates proximity alpha for Reinforced cells within the 7-step linear window.
-   */
   const updateLinearShieldVisibility = useCallback(
     (newCurrentIndex: number, currentBoard: GeneratedBoard) => {
       const maxIdx = Math.min(TOTAL_CELLS - 1, newCurrentIndex + SHIELD_REVEAL_DISTANCE);
@@ -337,14 +396,6 @@ export const App: React.FC = () => {
     []
   );
 
-  /**
-   * OMNI-8 MODE: Updates DOM classes & per-branch CSS variables for:
-   * - Single confirmed head (`.active`) OR multiple candidate heads (`.omni-blurry-head`),
-   *   each colored with its branch's unique `--branch-color`!
-   * - Uncommitted branch trails (`.omni-branch-trail`), colored with `--branch-color`!
-   * - Overlapping trails (`.omni-trail-overlap`), changing border when >= 2 branches share a tile!
-   * - Available 8-directional & wrap-around / phase-jump target cells (`.omni-available`).
-   */
   const syncOmniVisualState = useCallback((currentBoard: GeneratedBoard) => {
     const eng = engineRef.current;
 
@@ -379,7 +430,6 @@ export const App: React.FC = () => {
     const visitedByHead = new Map<number, ReadonlySet<number>>();
     const isInitialCellPending = eng.clearedCount === 0;
 
-    // Track which branches touch each cell in their trail so we can highlight overlapping paths
     const cellBranchColors = new Map<number, string[]>();
     for (let b = 0; b < branches.length; b++) {
       const br = branches[b];
@@ -468,7 +518,6 @@ export const App: React.FC = () => {
       );
     }
 
-    // Update 2D Planar Reinforced Shield proximity alpha (radius 3)
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const cell = currentBoard.cells[i];
       if (!cell.isReinforced) continue;
@@ -492,8 +541,9 @@ export const App: React.FC = () => {
   }, []);
 
   // Floating +pts / -pts popup in dynamic spectrum color inside the Score Box
+  // Supports `isSuperQuantum` (> Quadruple: PENTA, HEXA, HEPTA, OCTA) for larger font & vivid neon pulse!
   const triggerDeltaPopup = useCallback(
-    (deltaPoints: number, spectrumColor: string, extraTag?: string) => {
+    (deltaPoints: number, spectrumColor: string, extraTag?: string, isSuperQuantum = false) => {
       const isPositive = deltaPoints >= 0;
       const formatted = isPositive ? `+${deltaPoints}` : `${deltaPoints}`;
       const fullText = extraTag ? `${formatted} ${extraTag}` : formatted;
@@ -510,26 +560,38 @@ export const App: React.FC = () => {
         badge.textContent = fullText;
         badge.style.color = isPositive ? spectrumColor : '#ff2a54';
         badge.style.borderColor = isPositive ? spectrumColor : '#ff2a54';
-        badge.style.boxShadow = `0 0 10px ${isPositive ? spectrumColor : 'rgba(255,42,84,0.5)'}`;
-        badge.classList.remove('fading-out', 'pill-impact-pop');
+        badge.style.boxShadow = isSuperQuantum
+          ? `0 0 18px ${spectrumColor}, 0 0 28px ${spectrumColor}`
+          : `0 0 10px ${isPositive ? spectrumColor : 'rgba(255,42,84,0.5)'}`;
+        badge.classList.remove('fading-out', 'pill-impact-pop', 'super-quantum-pill');
         void badge.offsetWidth;
         badge.classList.add('visible', 'pill-impact-pop');
+        if (isSuperQuantum) {
+          badge.classList.add('super-quantum-pill');
+        }
 
         if (badgeFadeTimeoutRef.current !== null) {
           window.clearTimeout(badgeFadeTimeoutRef.current);
         }
-        badgeFadeTimeoutRef.current = window.setTimeout(() => {
-          badge.classList.add('fading-out');
-        }, 1250);
+        badgeFadeTimeoutRef.current = window.setTimeout(
+          () => {
+            badge.classList.add('fading-out');
+          },
+          isSuperQuantum ? 1750 : 1250
+        );
       }
 
       const root = deltaPopupRootRef.current;
       if (root) {
         const popup = document.createElement('span');
-        popup.className = `score-delta-popup ${isPositive ? 'pos' : 'neg'}`;
+        popup.className = `score-delta-popup ${isPositive ? 'pos' : 'neg'} ${
+          isSuperQuantum ? 'super-quantum-popup' : ''
+        }`;
         popup.textContent = fullText;
         popup.style.color = isPositive ? spectrumColor : '#ff2a54';
-        popup.style.textShadow = `0 0 10px ${isPositive ? spectrumColor : '#ff2a54'}`;
+        popup.style.textShadow = isSuperQuantum
+          ? `0 0 14px ${spectrumColor}, 0 0 24px #ffffff`
+          : `0 0 10px ${isPositive ? spectrumColor : '#ff2a54'}`;
         const jitterX = Math.round((Math.random() - 0.5) * 34);
         popup.style.setProperty('--jitter-x', `${jitterX}px`);
 
@@ -546,13 +608,16 @@ export const App: React.FC = () => {
     []
   );
 
-  // Start / Restart Game
+  // Start / Restart Game (Fetches a fresh server-authoritative board session in parallel)
   const startNewGame = useCallback(
     (overrideMode?: GameMode) => {
       const targetMode = overrideMode ?? gameMode;
-      const newBoard = generateFairBoard(targetMode);
-      setBoard(newBoard);
+      const fallbackBoard = generateFairBoard(targetMode);
+      setBoard(fallbackBoard);
       pressedPhysicalKeysRef.current.clear();
+      activeKeyDownEventMapRef.current.clear();
+      telemetryEventsRef.current = [];
+      serverSessionTokenRef.current = null;
 
       const eng = engineRef.current;
       eng.currentIndex = 0;
@@ -561,18 +626,15 @@ export const App: React.FC = () => {
       eng.lastKeystrokeTime = 0;
       eng.score = 0;
       eng.displayedScore = 0;
-      eng.shieldIntactOnCurrent = newBoard.cells[0].isReinforced;
+      eng.shieldIntactOnCurrent = fallbackBoard.cells[0].isReinforced;
       eng.cellHitTimestamps.fill(0);
       eng.cellFirstHitTimestamps.fill(0);
 
-      // Reset OMNI state
       eng.doneMask.fill(0);
       eng.clearedCount = 0;
       eng.omniBranches = [];
       eng.omniVisualCells.clear();
-      eng.omniRecentDigits = [];
-      eng.omniRecentTimestamps = [];
-      eng.omniTriggeredSeqKeys.clear();
+      eng.quantumMerges = 0;
 
       eng.totalKeystrokes = 0;
       eng.sumDeltaMs = 0;
@@ -587,11 +649,14 @@ export const App: React.FC = () => {
       setAvgSpeedMs(null);
       setPeakKps(0);
       setSequencesHitCount(0);
+      setQuantumMergesCount(0);
       setReinforcedHitCount(0);
       setMistakesCount(0);
       setIsFinished(false);
       setHasStarted(false);
       setHasSubmittedScore(false);
+      setBotAlertInfo(null);
+      setUnlockedBadgesOnRun([]);
       setNickCursor(0);
       setQuantumLasers([]);
       setChartTick((t) => t + 1);
@@ -601,11 +666,24 @@ export const App: React.FC = () => {
         scoreNodeRef.current.style.color = '#ffea00';
       }
       if (lastDeltaBadgeRef.current) {
-        lastDeltaBadgeRef.current.classList.remove('visible', 'fading-out');
+        lastDeltaBadgeRef.current.classList.remove(
+          'visible',
+          'fading-out',
+          'super-quantum-pill'
+        );
       }
       if (progressNodeRef.current) {
         progressNodeRef.current.textContent = `0 / ${TOTAL_CELLS}`;
       }
+
+      // Request server-authoritative session & board
+      apiStartGameSession(targetMode).then((session) => {
+        if (session && engineRef.current.totalKeystrokes === 0 && !engineRef.current.isFinished) {
+          serverSessionTokenRef.current = session.sessionToken;
+          setBoard(session.board);
+          engineRef.current.shieldIntactOnCurrent = session.board.cells[0].isReinforced;
+        }
+      });
     },
     [gameMode]
   );
@@ -662,7 +740,7 @@ export const App: React.FC = () => {
     }
   }, [board, gameMode, activeTab, updateLinearShieldVisibility, syncOmniVisualState]);
 
-  // Submit 3-letter arcade nick to Shared Backend + localStorage fallback (REQUIRES LOGGED-IN ACCOUNT)
+  // Submit verified keystroke trace & 3-letter nick to Server Anti-Cheat Endpoint
   const handleSaveScoreToLeaderboard = useCallback(async () => {
     if (hasSubmittedScore) return;
     if (!currentUser) {
@@ -679,43 +757,53 @@ export const App: React.FC = () => {
 
     setHasSubmittedScore(true);
 
-    if (currentUser && nick !== currentUser.nick) {
+    if (nick !== currentUser.nick) {
       apiUpdateUserSettings({ nick }).then((updatedUser) => {
         if (updatedUser) setCurrentUser(updatedUser);
       });
     }
 
-    const backendSaved = await apiSubmitScoreToBackend({
+    const verifyRes = await apiFinishGameSession({
+      sessionToken: serverSessionTokenRef.current,
       nick,
-      score: eng.score,
-      mode: gameMode,
-      totalTimeSec,
-      avgSpeedMs: avgSpeedMs ?? 0,
-      mistakes: mistakesCount,
+      events: telemetryEventsRef.current,
     });
 
-    const newEntry: LeaderboardEntry = backendSaved ?? {
+    if (verifyRes.user) {
+      setCurrentUser(verifyRes.user);
+    }
+
+    if (!verifyRes.ok && verifyRes.botDetected) {
+      setBotAlertInfo({
+        reason: verifyRes.error || 'Automated or synthetic input pattern detected.',
+        badge: verifyRes.badgeAwarded,
+      });
+      return;
+    }
+
+    if (verifyRes.newBadges && verifyRes.newBadges.length > 0) {
+      setUnlockedBadgesOnRun(verifyRes.newBadges);
+    }
+
+    const newEntry: LeaderboardEntry = verifyRes.entry ?? {
       id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       nick,
       score: eng.score,
       mode: gameMode,
+      version: CURRENT_GAME_VERSION,
       totalTimeSec,
       avgSpeedMs: avgSpeedMs ?? 0,
       mistakes: mistakesCount,
       date: new Date().toISOString().slice(0, 10),
-      username: currentUser?.username,
+      username: currentUser.username,
+      badges: verifyRes.user?.badges ?? currentUser.badges,
     };
 
-    if (backendSaved) {
+    if (verifyRes.ok) {
       setIsBackendOnline(true);
     }
 
-    if (currentUser) {
-      appendLocalMyRun({
-        ...newEntry,
-        username: newEntry.username || currentUser.username,
-      });
-    }
+    appendLocalMyRun(newEntry);
 
     setLeaderboard((prev) => {
       const updated = [...prev, newEntry].sort((a, b) => b.score - a.score);
@@ -744,21 +832,37 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Zero-Lag Global Keydown + Keyup Engine
+  // Zero-Lag Global Keydown + Keyup Engine with Anti-Bot Dwell Telemetry
   useEffect(() => {
     const handleKeyUp = (e: KeyboardEvent) => {
       const physCode = e.code || e.key.toLowerCase();
       pressedPhysicalKeysRef.current.delete(physCode);
+      const tracked = activeKeyDownEventMapRef.current.get(physCode);
+      if (tracked) {
+        tracked.eventRef.downUpDurationMs = Math.max(
+          0,
+          Math.round((performance.now() - tracked.downTime) * 100) / 100
+        );
+        activeKeyDownEventMapRef.current.delete(physCode);
+      }
     };
 
     const handleWindowBlur = () => {
       pressedPhysicalKeysRef.current.clear();
+      activeKeyDownEventMapRef.current.clear();
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isBindingsOpen || isAuthOpen || activeTab !== 'GAME') return;
+      if (
+        isBindingsOpen ||
+        isAuthOpen ||
+        isWelcomeOpen ||
+        isReleaseNotesOpen ||
+        activeTab !== 'GAME'
+      ) {
+        return;
+      }
 
-      // If board is finished, handle 3-letter Arcade Nick input directly from keyboard!
       if (engineRef.current.isFinished && !hasSubmittedScore) {
         if (e.key === 'Escape') {
           e.preventDefault();
@@ -834,10 +938,24 @@ export const App: React.FC = () => {
       const eng = engineRef.current;
       if (eng.isFinished) return;
 
-      const now = performance.now();
+      const now = Math.round(performance.now() * 100) / 100;
+
+      // Record keystroke telemetry event for server-side replay & anti-bot sentinel
+      const telemetryEv: KeystrokeTelemetryEvent = {
+        digit: mappedDigit,
+        clientTs: now,
+        downUpDurationMs: 42,
+        isTrusted: Boolean(e.isTrusted),
+        physKeyCode: physCode,
+      };
+      telemetryEventsRef.current.push(telemetryEv);
+      activeKeyDownEventMapRef.current.set(physCode, {
+        eventRef: telemetryEv,
+        downTime: now,
+      });
 
       // ======================================================================
-      // MODE A: OMNI-8 (Starts at Center Cell 136 -> Then 8-Way Free Movement)
+      // MODE A: OMNI-8 (v0.0.2: No Sequences, Path-Length Quantum Bonus + Penta/Hexa/Hepta/Octa)
       // ======================================================================
       if (gameMode === 'OMNI') {
         const delta =
@@ -848,7 +966,6 @@ export const App: React.FC = () => {
         const speedBonus =
           delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
 
-        // SPECIAL CASE 0: First cell on the board (center index 136) has NOT been cleared yet!
         if (eng.clearedCount === 0) {
           const startBranch = eng.omniBranches[0];
           const centerIdx = startBranch.headIndex;
@@ -863,8 +980,6 @@ export const App: React.FC = () => {
               const shieldBreakPoints = BASE_POINTS + speedBonus;
               eng.score += shieldBreakPoints;
               eng.lastKeystrokeTime = now;
-              eng.omniRecentDigits.push(mappedDigit);
-              eng.omniRecentTimestamps.push(now);
 
               const intensity = computePointIntensity(shieldBreakPoints, clampedDelta);
               const specColor = getSpectrumColor(intensity);
@@ -889,9 +1004,6 @@ export const App: React.FC = () => {
             eng.totalKeystrokes += 1;
             eng.sumDeltaMs += delta;
 
-            eng.omniRecentDigits.push(mappedDigit);
-            eng.omniRecentTimestamps.push(now);
-
             const currentKps = 1000 / Math.max(40, delta);
             if (currentKps > eng.peakKps) {
               eng.peakKps = currentKps;
@@ -915,7 +1027,6 @@ export const App: React.FC = () => {
             }
 
             syncOmniVisualState(board);
-
             const roundedDelta = Math.round(delta);
             samplesRef.current.push({
               step: 1,
@@ -961,9 +1072,6 @@ export const App: React.FC = () => {
           }
         }
 
-        // 1. Expand all branches naturally (NO shield prioritization):
-        // - If a branch's head has an uncracked shield and matches `mappedDigit`, it completes its 2nd hit on that head.
-        // - If a branch's head is ready to move, it expands to any available neighbors matching `mappedDigit`.
         const nextBranches: OmniBranch[] = [];
         let completedShield2xOnStep = false;
 
@@ -1006,7 +1114,6 @@ export const App: React.FC = () => {
           }
         }
 
-        // If NO branch matched `mappedDigit` -> MISTAKE!
         if (nextBranches.length === 0) {
           const errDelta =
             eng.lastKeystrokeTime === 0
@@ -1042,7 +1149,7 @@ export const App: React.FC = () => {
         }
 
         // ====================================================================
-        // 2. IDEA 1: QUANTUM MERGE (DIAMOND CONVERGENCE) + LASER SWEEP
+        // QUANTUM MERGE + PATH-LENGTH PROPORTIONAL BONUS + PENTA/HEXA/HEPTA/OCTA
         // ====================================================================
         const groupsByHead = new Map<number, OmniBranch[]>();
         for (const cand of nextBranches) {
@@ -1053,6 +1160,7 @@ export const App: React.FC = () => {
 
         let deduplicated: OmniBranch[] = [];
         let maxQuantumMergeCount = 0;
+        let maxQuantumMergedPathSteps = 0;
         const quantumLaserTrails: number[][] = [];
 
         for (const [headIdx, group] of groupsByHead.entries()) {
@@ -1060,8 +1168,16 @@ export const App: React.FC = () => {
             deduplicated.push(group[0]);
           } else {
             const mCount = group.length;
-            if (mCount > maxQuantumMergeCount) {
+            const mergedPathSteps = group.reduce(
+              (acc, g) => acc + Math.max(1, g.trail.length - 1),
+              0
+            );
+            if (
+              mCount > maxQuantumMergeCount ||
+              (mCount === maxQuantumMergeCount && mergedPathSteps > maxQuantumMergedPathSteps)
+            ) {
               maxQuantumMergeCount = mCount;
+              maxQuantumMergedPathSteps = mergedPathSteps;
             }
 
             const mergedVisited = new Set<number>();
@@ -1098,7 +1214,6 @@ export const App: React.FC = () => {
           }
         }
 
-        // Check if any branch has cleared all 273 cells on the board (and cracked its head shield if reinforced)
         for (const br of deduplicated) {
           const headNeedsSecondHit =
             board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead;
@@ -1119,11 +1234,6 @@ export const App: React.FC = () => {
           deduplicated = deduplicated.slice(0, 12);
         }
 
-        // 3. Commit resolved cells to `doneMask`:
-        //    - If down to 1 active branch, commit its entire resolved trail.
-        //    - If multiple branches remain, commit ANY cell that is present in EVERY active branch's
-        //      resolved trail (handles both common prefixes AND symmetric swaps like A->B vs B->A
-        //      when two or more identical digits are pressed!).
         if (deduplicated.length === 1) {
           const winner = deduplicated[0];
           const headNeedsSecondHit =
@@ -1190,13 +1300,6 @@ export const App: React.FC = () => {
         eng.omniBranches = deduplicated;
         setHasStarted(true);
 
-        eng.omniRecentDigits.push(mappedDigit);
-        eng.omniRecentTimestamps.push(now);
-        if (eng.omniRecentDigits.length > 16) {
-          eng.omniRecentDigits.shift();
-          eng.omniRecentTimestamps.shift();
-        }
-
         const multiplier = completedShield2xOnStep ? 2 : 1;
         let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
         if (completedShield2xOnStep) {
@@ -1204,48 +1307,22 @@ export const App: React.FC = () => {
           setReinforcedHitCount(eng.reinforcedHit);
         }
 
-        let completedSequenceName: string | undefined;
         let quantumTitle: string | undefined;
+        let isSuperQuantum = false;
+        let quantumColorOverride: string | undefined;
 
         if (maxQuantumMergeCount >= 2) {
-          let quantumBonus = 300;
-          let qColor = '#00f0ff';
-
-          if (maxQuantumMergeCount === 2) {
-            quantumTitle = 'DOUBLE QUANTUM!';
-            quantumBonus = 300;
-            qColor = '#00f0ff';
-          } else if (maxQuantumMergeCount === 3) {
-            quantumTitle = 'TRIPLE QUANTUM!';
-            quantumBonus = 750;
-            qColor = '#ff00e5';
-          } else {
-            quantumTitle = 'QUADRUPLE QUANTUM!';
-            quantumBonus = 2000;
-            qColor = '#ffd700';
-          }
-
-          pointsGained += quantumBonus;
-          triggerQuantumLaserSweep(quantumLaserTrails, qColor);
-        }
-
-        const matchedSeq = detectOmniSequenceMatch(
-          eng.omniRecentDigits,
-          eng.omniRecentTimestamps,
-          eng.omniTriggeredSeqKeys
-        );
-
-        if (matchedSeq) {
-          pointsGained += matchedSeq.bonusPoints;
-          completedSequenceName = matchedSeq.name;
-          eng.sequencesHit += 1;
-          setSequencesHitCount(eng.sequencesHit);
-
-          if (matchedSeq.isPhiEasterEgg && boardWrapperRef.current) {
-            boardWrapperRef.current.classList.remove('phi-golden-flash');
-            void boardWrapperRef.current.offsetWidth;
-            boardWrapperRef.current.classList.add('phi-golden-flash');
-          }
+          const qInfo = getQuantumMergeTierInfo(
+            maxQuantumMergeCount,
+            maxQuantumMergedPathSteps
+          );
+          quantumTitle = `${qInfo.title} +${qInfo.pathBonus} PATH`;
+          isSuperQuantum = qInfo.isSuper;
+          quantumColorOverride = qInfo.color;
+          pointsGained += qInfo.totalBonus;
+          eng.quantumMerges += 1;
+          setQuantumMergesCount(eng.quantumMerges);
+          triggerQuantumLaserSweep(quantumLaserTrails, qInfo.color, qInfo.isSuper);
         }
 
         eng.score += pointsGained;
@@ -1260,7 +1337,7 @@ export const App: React.FC = () => {
         }
 
         const intensity = computePointIntensity(pointsGained, clampedDelta);
-        const specColor = getSpectrumColor(intensity);
+        const specColor = quantumColorOverride || getSpectrumColor(intensity);
         if (scoreNodeRef.current) {
           scoreNodeRef.current.style.color = specColor;
         }
@@ -1270,23 +1347,17 @@ export const App: React.FC = () => {
         );
 
         let tag = '';
-        if (quantumTitle && completedSequenceName) {
-          tag = `[${quantumTitle} + ${completedSequenceName}]`;
-        } else if (quantumTitle) {
+        if (quantumTitle) {
           tag = `[${quantumTitle}]`;
-        } else if (completedShield2xOnStep && completedSequenceName) {
-          tag = `[2X + ${completedSequenceName}]`;
         } else if (completedShield2xOnStep) {
           tag = '[SHIELD 2X!]';
         } else if (anyUncrackedShieldNow) {
           tag = '[CRACKED!]';
-        } else if (completedSequenceName) {
-          tag = `[${completedSequenceName}]`;
         } else if (deduplicated.length > 1) {
           tag = `[SPLIT x${deduplicated.length}]`;
         }
 
-        triggerDeltaPopup(pointsGained, specColor, tag || undefined);
+        triggerDeltaPopup(pointsGained, specColor, tag || undefined, isSuperQuantum);
 
         if (progressNodeRef.current) {
           progressNodeRef.current.textContent = `${eng.clearedCount} / ${TOTAL_CELLS}`;
@@ -1307,7 +1378,7 @@ export const App: React.FC = () => {
           kps: Number(currentKps.toFixed(2)),
           points: pointsGained,
           isReinforced2x: completedShield2xOnStep,
-          sequenceName: quantumTitle || completedSequenceName,
+          sequenceName: quantumTitle,
         });
 
         setLastSpeedMs(roundedDelta);
@@ -1317,7 +1388,7 @@ export const App: React.FC = () => {
       }
 
       // ======================================================================
-      // MODE B: LINEAR (Classic Left-to-Right Row-by-Row)
+      // MODE B: LINEAR (v0.0.2: Shield-in-Sequence 2X Sequence Bonus + Persistent Sequence Highlight)
       // ======================================================================
       const idx = eng.currentIndex;
       const currentCell = board.cells[idx];
@@ -1357,7 +1428,12 @@ export const App: React.FC = () => {
         }
 
         const isSecondShieldHit = currentCell.isReinforced && !eng.shieldIntactOnCurrent;
-        const multiplier = isSecondShieldHit ? 2 : 1;
+        const isCellInsideSequence = currentCell.sequenceInstanceId !== null;
+
+        // v0.0.2 Rule: In LINEAR mode, if a shield is inside a secret sequence,
+        // it does NOT multiply the single tile's time-delta points by 2X;
+        // instead, completing that sequence multiplies the ENTIRE SEQUENCE BONUS by 2X!
+        const multiplier = isSecondShieldHit && !isCellInsideSequence ? 2 : 1;
         let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
 
         if (isSecondShieldHit) {
@@ -1371,6 +1447,8 @@ export const App: React.FC = () => {
         }
 
         let completedSequenceName: string | undefined;
+        let completedSequenceWasDoubled = false;
+
         if (currentCell.isSequenceEnd && currentCell.sequenceInstanceId !== null) {
           const seqInst = board.sequences.find(
             (s) => s.instanceId === currentCell.sequenceInstanceId
@@ -1379,13 +1457,25 @@ export const App: React.FC = () => {
             const firstIdx = seqInst.startIndex;
             const startTime = eng.cellFirstHitTimestamps[firstIdx];
             const totalDurationMs = Math.max(1, now - startTime);
-            const stepsCount = Math.max(1, seqInst.pattern.digits.length - 1);
-            const avgSeqDelta = totalDurationMs / stepsCount;
+            const shieldCellsInSeq = seqInst.cellIndices.filter(
+              (cIdx) => board.cells[cIdx].isReinforced
+            ).length;
 
-            if (avgSeqDelta <= seqInst.pattern.maxAvgDeltaMs) {
-              const seqBonus = seqInst.pattern.bonusPoints;
+            // Count all keystroke transitions inside the sequence (including shield double-taps)
+            // plus a +35ms grace buffer per shield so a shield inside a sequence never breaks completion!
+            const stepsCount = Math.max(
+              1,
+              seqInst.pattern.digits.length - 1 + shieldCellsInSeq
+            );
+            const avgSeqDelta = totalDurationMs / stepsCount;
+            const allowedMaxDelta = seqInst.pattern.maxAvgDeltaMs + shieldCellsInSeq * 35;
+
+            if (avgSeqDelta <= allowedMaxDelta) {
+              const seqMultiplier = shieldCellsInSeq > 0 ? 2 : 1;
+              const seqBonus = seqInst.pattern.bonusPoints * seqMultiplier;
               pointsGained += seqBonus;
               completedSequenceName = seqInst.pattern.name;
+              completedSequenceWasDoubled = seqMultiplier === 2;
               eng.sequencesHit += 1;
               setSequencesHitCount(eng.sequencesHit);
 
@@ -1395,11 +1485,17 @@ export const App: React.FC = () => {
                 boardWrapperRef.current.classList.add('phi-golden-flash');
               }
 
+              // Jump animation + persistent highlight on all cells of the completed sequence!
               for (const sIdx of seqInst.cellIndices) {
                 const sNode = cellNodesRef.current[sIdx];
                 if (sNode) {
                   sNode.classList.add(
-                    seqInst.pattern.isPhiEasterEgg ? 'seq-completed-phi' : 'seq-completed-pulse'
+                    seqInst.pattern.isPhiEasterEgg
+                      ? 'seq-completed-phi'
+                      : 'seq-completed-pulse',
+                    seqInst.pattern.isPhiEasterEgg
+                      ? 'seq-completed-phi-cell'
+                      : 'seq-completed-cell'
                   );
                 }
               }
@@ -1426,15 +1522,22 @@ export const App: React.FC = () => {
         }
 
         let tag = '';
-        if (isSecondShieldHit && completedSequenceName) {
-          tag = `[2X + ${completedSequenceName}]`;
-        } else if (isSecondShieldHit) {
-          tag = '[SHIELD 2X!]';
+        if (completedSequenceName && completedSequenceWasDoubled) {
+          tag = `[2X SEQ: ${completedSequenceName}!]`;
         } else if (completedSequenceName) {
           tag = `[${completedSequenceName}]`;
+        } else if (isSecondShieldHit && !isCellInsideSequence) {
+          tag = '[SHIELD 2X!]';
+        } else if (isSecondShieldHit && isCellInsideSequence) {
+          tag = '[SEQ SHIELD ARMED 2X!]';
         }
 
-        triggerDeltaPopup(pointsGained, specColor, tag || undefined);
+        triggerDeltaPopup(
+          pointsGained,
+          specColor,
+          tag || undefined,
+          completedSequenceWasDoubled
+        );
 
         if (currentNode) {
           currentNode.classList.remove(
@@ -1476,7 +1579,7 @@ export const App: React.FC = () => {
           deltaMs: roundedDelta,
           kps: Number(currentKps.toFixed(2)),
           points: pointsGained,
-          isReinforced2x: isSecondShieldHit,
+          isReinforced2x: isSecondShieldHit || completedSequenceWasDoubled,
           sequenceName: completedSequenceName,
         });
 
@@ -1529,6 +1632,8 @@ export const App: React.FC = () => {
     activeTab,
     isBindingsOpen,
     isAuthOpen,
+    isWelcomeOpen,
+    isReleaseNotesOpen,
     currentUser,
     hasSubmittedScore,
     nickCursor,
@@ -1624,11 +1729,10 @@ export const App: React.FC = () => {
           onBackToGame={() => setActiveTab('GAME')}
         />
       ) : (
-        /* MAIN WORKSPACE: 21x13 BOARD ON THE LEFT + HEADER BOX & SCORE/KPI BOX ON THE RIGHT */
         <main className="main-workspace">
           <section ref={boardWrapperRef} className="board-section">
             <div className="board-grid-stage">
-              {/* QUANTUM MERGE LASER LINE OVERLAY (SWEEPS FROM START TO END OF DIAMOND PATHS) */}
+              {/* QUANTUM MERGE LASER LINE OVERLAY */}
               {quantumLasers.length > 0 && (
                 <svg
                   className="quantum-laser-svg"
@@ -1638,13 +1742,13 @@ export const App: React.FC = () => {
                   {quantumLasers.map((line) => (
                     <g key={line.id}>
                       <polyline
-                        className="quantum-laser-glow"
+                        className={`quantum-laser-glow ${line.isSuper ? 'super-laser-glow' : ''}`}
                         points={line.pointsAttr}
                         pathLength={100}
                         style={{ stroke: line.color }}
                       />
                       <polyline
-                        className="quantum-laser-core"
+                        className={`quantum-laser-core ${line.isSuper ? 'super-laser-core' : ''}`}
                         points={line.pointsAttr}
                         pathLength={100}
                       />
@@ -1725,11 +1829,22 @@ export const App: React.FC = () => {
                     engineRef.current.runStartTime > 0
                       ? `${((engineRef.current.runEndTime - engineRef.current.runStartTime) / 1000).toFixed(2)}s`
                       : '--'}{' '}
-                    | Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} | Secret
-                    Sequences: {sequencesHitCount}/{board.sequences.length}
+                    | Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} |{' '}
+                    {gameMode === 'OMNI'
+                      ? `Quantum Merges: ${quantumMergesCount}`
+                      : `Secret Sequences: ${sequencesHitCount}/${board.sequences.length}`}
                   </p>
 
-                  {!hasSubmittedScore ? (
+                  {botAlertInfo ? (
+                    <div className="bot-alert-card">
+                      <BadgeIcon code="BOT_DETECTED" size={56} />
+                      <h3 className="bot-alert-title">ANTI-CHEAT SENTINEL // AUTOMATON FLAGGED</h3>
+                      <p className="bot-alert-desc">{botAlertInfo.reason}</p>
+                      <span className="bot-alert-badge-note">
+                        BADGE ASSIGNED TO PROFILE: SUSPECTED AUTOMATON
+                      </span>
+                    </div>
+                  ) : !hasSubmittedScore ? (
                     currentUser ? (
                       <div className="nick-entry-box">
                         <span className="nick-prompt">
@@ -1752,7 +1867,7 @@ export const App: React.FC = () => {
                           className="btn-arcade gold"
                           onClick={() => void handleSaveScoreToLeaderboard()}
                         >
-                          SAVE TO LEADERBOARD [ENTER]
+                          VERIFY &amp; SAVE TO LEADERBOARD [ENTER]
                         </button>
                       </div>
                     ) : (
@@ -1775,7 +1890,20 @@ export const App: React.FC = () => {
                       </div>
                     )
                   ) : (
-                    <p className="nick-saved-msg">SCORE SAVED TO LEADERBOARD!</p>
+                    <div className="saved-score-box">
+                      <p className="nick-saved-msg">SCORE VERIFIED &amp; SAVED TO LEADERBOARD!</p>
+                      {unlockedBadgesOnRun.length > 0 && (
+                        <div className="unlocked-badges-toast">
+                          <span>NEW BADGE UNLOCKED:</span>
+                          {unlockedBadgesOnRun.map((b) => (
+                            <div key={b.code} className="unlocked-badge-item">
+                              <BadgeIcon code={b.code} size={32} />
+                              <strong>{b.title}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   <button
@@ -1803,6 +1931,8 @@ export const App: React.FC = () => {
               setActiveTab('LEADERBOARD');
             }}
             onOpenSettings={() => setIsBindingsOpen(true)}
+            onOpenHelp={() => setIsWelcomeOpen(true)}
+            onOpenReleaseNotes={() => setIsReleaseNotesOpen(true)}
             onRestart={() => startNewGame()}
             scoreNodeRef={scoreNodeRef}
             lastDeltaBadgeRef={lastDeltaBadgeRef}
@@ -1813,6 +1943,7 @@ export const App: React.FC = () => {
             mistakesCount={mistakesCount}
             sequencesHitCount={sequencesHitCount}
             totalSequencesCount={board.sequences.length}
+            quantumMergesCount={quantumMergesCount}
             reinforcedHitCount={reinforcedHitCount}
             totalReinforcedCount={board.totalReinforcedCount}
           />
@@ -1821,8 +1952,14 @@ export const App: React.FC = () => {
 
       {/* BARELY VISIBLE COPYRIGHT FOOTER AT THE VERY BOTTOM */}
       <footer className="subtle-copyright-footer">
-        &copy; {new Date().getFullYear()} FIGRID
+        &copy; {new Date().getFullYear()} FIGRID v{CURRENT_GAME_VERSION}
       </footer>
+
+      {/* WELCOME / HOW-TO-PLAY GUIDE MODAL (OPENS ONCE FOR NEW USERS OR VIA '?' BUTTON) */}
+      <WelcomeGuideModal isOpen={isWelcomeOpen} onClose={handleCloseWelcome} />
+
+      {/* RELEASE NOTES v0.0.2 MODAL (WITH GRAPHICAL BADGE & SCORING PREVIEWS) */}
+      <ReleaseNotesModal isOpen={isReleaseNotesOpen} onClose={handleCloseReleaseNotes} />
 
       {/* SETTINGS & KEYBINDINGS MODAL */}
       <KeyBindingsModal
@@ -1834,7 +1971,7 @@ export const App: React.FC = () => {
         onClose={() => setIsBindingsOpen(false)}
       />
 
-      {/* PILOT LOGIN / REGISTER / CLOUD SYNC MODAL */}
+      {/* PILOT LOGIN / REGISTER / CLOUD SYNC & BADGES MODAL */}
       <AuthModal
         isOpen={isAuthOpen}
         currentUser={currentUser}

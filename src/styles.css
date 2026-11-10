@@ -712,40 +712,62 @@ body {
   transform: translate(-50%, -50%) scale(0.6);
 }
 
-/* Pulse animation when a hidden sequence is completed fast enough */
+/* Pulse & gentle jump animation when a hidden sequence is completed fast enough,
+   followed by a persistent distinct highlight color on all tiles of that sequence! */
 .cell.seq-completed-pulse {
-  animation: seqCompleteFlash 0.7s ease-out;
+  animation: seqCompleteJumpFlash 0.72s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
 .cell.seq-completed-phi {
-  animation: phiCompleteFlash 1.2s ease-out;
+  animation: phiCompleteJumpFlash 1.2s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
-@keyframes seqCompleteFlash {
+.cell.done.seq-completed-cell {
+  background-color: rgba(56, 189, 248, 0.24);
+  border-color: rgba(56, 189, 248, 0.65);
+  color: #7dd3fc;
+  box-shadow: inset 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+.cell.done.seq-completed-phi-cell {
+  background-color: rgba(250, 204, 21, 0.25);
+  border-color: rgba(250, 204, 21, 0.75);
+  color: #fde047;
+  box-shadow: inset 0 0 10px rgba(250, 204, 21, 0.35);
+}
+
+@keyframes seqCompleteJumpFlash {
   0% {
     background-color: #ffea00;
     color: #000;
-    transform: scale(1.08);
+    transform: translateY(0) scale(1);
+  }
+  38% {
+    background-color: #38bdf8;
+    color: #000;
+    box-shadow: 0 0 14px #38bdf8;
+    transform: translateY(-5px) scale(1.12);
   }
   100% {
-    background-color: rgba(0, 229, 163, 0.12);
-    transform: scale(1);
+    background-color: rgba(56, 189, 248, 0.24);
+    transform: translateY(0) scale(1);
   }
 }
 
-@keyframes phiCompleteFlash {
+@keyframes phiCompleteJumpFlash {
   0% {
     background-color: #ffd700;
-    box-shadow: 0 0 16px #ffd700;
+    box-shadow: 0 0 18px #ffd700;
     color: #000;
-    transform: scale(1.14) rotate(2deg);
+    transform: translateY(-6px) scale(1.16) rotate(2deg);
   }
   50% {
     background-color: #ffae00;
+    transform: translateY(-3px) scale(1.08);
   }
   100% {
-    background-color: rgba(0, 229, 163, 0.12);
-    transform: scale(1) rotate(0);
+    background-color: rgba(250, 204, 21, 0.25);
+    transform: translateY(0) scale(1) rotate(0);
   }
 }
 
@@ -1745,4 +1767,889 @@ body {
     max-width: 100%;
     height: auto;
   }
+}
+
+/* ============================================================================
+   v0.0.2 ADDITIONS: SUPER-QUANTUM (>4), 8-BIT BADGES, 5-PLACE PODIUM, & MODALS
+   ============================================================================ */
+
+/* Top Header Row with Version Tag & '?' Help Button */
+.hud-brand-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.btn-help-question {
+  width: 34px;
+  height: 34px;
+  background: #161d2f;
+  border: 2px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 0 #05070b;
+  transition: transform 0.08s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-help-question:hover {
+  background: rgba(0, 240, 255, 0.16);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4), 0 4px 0 #05070b;
+}
+
+.btn-version-tag {
+  background: rgba(255, 0, 229, 0.12);
+  border: 1.5px solid var(--accent-magenta);
+  color: var(--accent-magenta);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #05070b;
+}
+
+.btn-version-tag:hover {
+  background: rgba(255, 0, 229, 0.24);
+}
+
+/* Super-Quantum (> Quadruple: PENTA, HEXA, HEPTA, OCTA OVERDRIVE) Larger Font & Vivid Animation */
+.last-delta-pill.super-quantum-pill {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 10px;
+  border-width: 2px;
+  letter-spacing: 0.5px;
+  animation: superPillPulse 0.44s cubic-bezier(0.18, 1.6, 0.4, 1);
+}
+
+@keyframes superPillPulse {
+  0% {
+    transform: scale(0.75);
+  }
+  42% {
+    transform: scale(1.32) rotate(-1.5deg);
+  }
+  75% {
+    transform: scale(1.12) rotate(1deg);
+  }
+  100% {
+    transform: scale(1.04) rotate(0);
+  }
+}
+
+.score-delta-popup.super-quantum-popup {
+  font-size: 15px !important;
+  letter-spacing: 1px;
+  animation: superQuantumFloatOut 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+@keyframes superQuantumFloatOut {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), 10px) scale(0.5);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -14px) scale(1.62);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -22px) scale(1.28);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -32px) scale(1.36);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -48px) scale(0.95);
+  }
+}
+
+.board-section.board-super-quantum-flash {
+  animation: superQuantumBoardShockwave 0.95s ease-out;
+}
+
+@keyframes superQuantumBoardShockwave {
+  0% {
+    border-color: #00ff66;
+    box-shadow: 0 0 42px rgba(0, 255, 102, 0.85), inset 0 0 32px rgba(255, 0, 229, 0.5);
+  }
+  50% {
+    border-color: #ff00e5;
+    box-shadow: 0 0 28px rgba(255, 0, 229, 0.65), inset 0 0 18px rgba(0, 240, 255, 0.35);
+  }
+  100% {
+    border-color: var(--panel-border);
+    box-shadow: 0 8px 0 #040508;
+  }
+}
+
+.cell.super-quantum-cell-pulse {
+  animation: superQuantumTileFlash 0.88s ease-out;
+}
+
+@keyframes superQuantumTileFlash {
+  0% {
+    background-color: #ffffff;
+    color: #000000;
+    box-shadow: 0 0 22px #00ff66, 0 0 12px #ffffff;
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.quantum-laser-glow.super-laser-glow {
+  stroke-width: 8.5;
+  opacity: 0.92;
+}
+
+.quantum-laser-core.super-laser-core {
+  stroke-width: 3.2;
+}
+
+/* 8-Bit Badges Strip & Buttons (Free-standing silhouette within square max box) */
+.pilot-badge-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.pilot-badge-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.14s cubic-bezier(0.2, 1.4, 0.4, 1), filter 0.14s ease;
+}
+
+.pilot-badge-btn:hover {
+  transform: scale(1.24);
+  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.65));
+}
+
+.figrid-badge-svg {
+  display: block;
+  overflow: visible;
+}
+
+.col-nick-flex {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pilot-btn-with-badges {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Profile Badges Grid & Badge Inspection Modal */
+.profile-badges-section {
+  background: #0c0f18;
+  border: 1px solid #242c42;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-badges-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.profile-badge-tile {
+  background: #121726;
+  border: 1.5px solid #2d3854;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  min-width: 108px;
+  transition: border-color 0.15s ease, transform 0.12s ease;
+}
+
+.profile-badge-tile:hover {
+  border-color: var(--accent-cyan);
+  transform: translateY(-2px);
+}
+
+.profile-badge-name {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #e2e8f0;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.profile-no-badges {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.badge-inspect-modal {
+  max-width: 420px;
+  text-align: center;
+}
+
+.badge-inspect-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 8px;
+  background: #0b0e17;
+  border: 1px solid #1e2638;
+}
+
+.badge-inspect-icon-showcase {
+  padding: 10px;
+  filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.35));
+}
+
+.badge-inspect-title {
+  font-size: 12px;
+  color: var(--accent-yellow);
+  letter-spacing: 1px;
+}
+
+.badge-inspect-desc {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #e2e8f0;
+  line-height: 1.5;
+  max-width: 340px;
+}
+
+.badge-inspect-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Bot Sentinel Alert on Victory Screen */
+.bot-alert-card {
+  background: rgba(255, 42, 84, 0.12);
+  border: 2px solid var(--accent-red);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.bot-alert-title {
+  font-size: 10px;
+  color: var(--accent-red);
+}
+
+.bot-alert-desc {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #fecdd3;
+}
+
+.bot-alert-badge-note {
+  font-size: 8px;
+  color: var(--accent-yellow);
+}
+
+/* 3-Column Leaderboard Scope Tabs & Version Filter Bar */
+.leaderboard-scope-tabs.three-cols {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.leaderboard-scope-btn.archive.active {
+  border-color: var(--accent-yellow);
+  color: var(--accent-yellow);
+  background: rgba(255, 234, 0, 0.1);
+  box-shadow: inset 0 0 10px rgba(255, 234, 0, 0.18);
+}
+
+.version-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: #0b0e17;
+  border: 1px solid #1e2638;
+  padding: 10px 14px;
+}
+
+.version-filter-label {
+  font-size: 8px;
+  color: #94a3b8;
+}
+
+.version-filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.version-pill-btn {
+  background: #141929;
+  border: 1.5px solid #334155;
+  color: #94a3b8;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.version-pill-btn.active {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.14);
+}
+
+/* ============================================================================
+   ARCHIVE HALL OF FAME: 5-PLACE FUTURISTIC GRAPHICAL PODIUM (4 - 2 - 1 - 3 - 5)
+   ============================================================================ */
+.archive-podium-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.futuristic-podium-stage {
+  display: grid;
+  grid-template-columns: 0.88fr 1fr 1.22fr 1fr 0.88fr;
+  align-items: end;
+  gap: 12px;
+  min-height: 410px;
+  padding: 24px 16px 8px;
+  background:
+    radial-gradient(ellipse at 50% 85%, rgba(0, 240, 255, 0.14) 0%, transparent 68%),
+    linear-gradient(180deg, #090c14 0%, #0d1322 100%);
+  border: 2px solid #232d46;
+  box-shadow: inset 0 0 32px rgba(0, 0, 0, 0.65);
+}
+
+.podium-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.podium-pilot-card {
+  width: 100%;
+  background: rgba(14, 19, 32, 0.94);
+  border: 1.5px solid #2e3b59;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+}
+
+.rank-col-1 .podium-pilot-card {
+  border: 2px solid var(--accent-yellow);
+  box-shadow: 0 0 22px rgba(255, 234, 0, 0.28);
+  padding: 16px 12px;
+}
+
+.rank-col-2 .podium-pilot-card {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.2);
+}
+
+.rank-col-3 .podium-pilot-card {
+  border-color: #f97316;
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.2);
+}
+
+.podium-rank-crest {
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: #94a3b8;
+}
+
+.rank-col-1 .podium-rank-crest {
+  color: var(--accent-yellow);
+  font-size: 8px;
+}
+
+.rank-col-2 .podium-rank-crest {
+  color: var(--accent-cyan);
+}
+
+.rank-col-3 .podium-rank-crest {
+  color: #fb923c;
+}
+
+.podium-nick-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.podium-nick {
+  font-size: 15px;
+  color: #f8fafc;
+  letter-spacing: 2px;
+}
+
+.rank-col-1 .podium-nick {
+  font-size: 20px;
+  color: var(--accent-yellow);
+  text-shadow: 0 0 10px rgba(255, 234, 0, 0.45);
+}
+
+.podium-username {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.podium-score-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--accent-cyan);
+}
+
+.rank-col-1 .podium-score-val {
+  font-size: 19px;
+  color: #ffffff;
+}
+
+.podium-score-val small {
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+.podium-telemetry-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #cbd5e1;
+  margin-top: 2px;
+}
+
+/* Futuristic Glowing Pedestal Pillars (Center #1 Tallest, #2 & #3 Medium, #4 & #5 Outer) */
+.podium-pillar {
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #334155;
+  background: linear-gradient(180deg, #161f33 0%, #0a0e18 100%);
+  overflow: hidden;
+}
+
+.rank-col-1 .podium-pillar {
+  height: 195px;
+  border-color: var(--accent-yellow);
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.26) 0%, rgba(15, 20, 34, 0.96) 100%);
+  box-shadow: 0 0 24px rgba(255, 215, 0, 0.25), inset 0 0 18px rgba(255, 215, 0, 0.18);
+}
+
+.rank-col-2 .podium-pillar {
+  height: 148px;
+  border-color: var(--accent-cyan);
+  background: linear-gradient(180deg, rgba(0, 240, 255, 0.22) 0%, rgba(15, 20, 34, 0.96) 100%);
+}
+
+.rank-col-3 .podium-pillar {
+  height: 126px;
+  border-color: #f97316;
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.22) 0%, rgba(15, 20, 34, 0.96) 100%);
+}
+
+.rank-col-4 .podium-pillar {
+  height: 96px;
+  border-color: #64748b;
+}
+
+.rank-col-5 .podium-pillar {
+  height: 78px;
+  border-color: #475569;
+}
+
+.podium-pillar-top-lip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.podium-pillar-big-num {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.85);
+  z-index: 2;
+  text-shadow: 0 3px 0 #000;
+}
+
+.rank-col-1 .podium-pillar-big-num {
+  font-size: 28px;
+  color: var(--accent-yellow);
+}
+
+/* ============================================================================
+   WELCOME GUIDE MODAL & VISUAL RELEASE NOTES MODAL (v0.0.2)
+   ============================================================================ */
+.welcome-guide-modal,
+.release-notes-modal {
+  max-width: 780px;
+  max-height: 90vh;
+}
+
+.welcome-guide-scroll {
+  overflow-y: auto;
+  max-height: 68vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 6px;
+}
+
+.guide-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-heading {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.guide-heading.cyan {
+  color: var(--accent-cyan);
+}
+
+.guide-heading.gold {
+  color: var(--accent-yellow);
+}
+
+.guide-heading.magenta {
+  color: var(--accent-magenta);
+}
+
+.guide-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #e2e8f0;
+  line-height: 1.55;
+}
+
+.guide-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.guide-card {
+  background: #0c0f18;
+  border: 1.5px solid #222b40;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guide-card.mode-box-linear {
+  border-color: rgba(0, 240, 255, 0.45);
+}
+
+.guide-card.mode-box-omni {
+  border-color: rgba(255, 234, 0, 0.45);
+}
+
+.guide-card-title {
+  font-size: 8px;
+  color: var(--accent-cyan);
+}
+
+.guide-card-desc {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.guide-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.guide-mode-tag {
+  font-size: 7px;
+  color: #94a3b8;
+}
+
+.guide-list {
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+/* Visual Release Notes Cards */
+.release-sub-tag {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.rn-feature-block {
+  background: #0b0e17;
+  border: 1.5px solid #242d44;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rn-badge-pill {
+  display: inline-block;
+  font-size: 7px;
+  padding: 4px 7px;
+  margin-bottom: 6px;
+}
+
+.rn-badge-pill.gold {
+  background: rgba(255, 234, 0, 0.15);
+  color: var(--accent-yellow);
+  border: 1px solid var(--accent-yellow);
+}
+
+.rn-badge-pill.cyan {
+  background: rgba(0, 240, 255, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+}
+
+.rn-badge-pill.magenta {
+  background: rgba(255, 0, 229, 0.15);
+  color: var(--accent-magenta);
+  border: 1px solid var(--accent-magenta);
+}
+
+.rn-title {
+  font-size: 10px;
+  color: #f8fafc;
+  margin-bottom: 6px;
+}
+
+.rn-desc {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.badges-showcase-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  gap: 14px;
+  background: #07090f;
+  border: 1px dashed #334155;
+  padding: 14px;
+}
+
+.rn-badge-sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 7px;
+  color: #cbd5e1;
+}
+
+.rn-scoring-diagrams-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rn-diagram-card {
+  background: #07090f;
+  border: 1px solid #1e293b;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rn-diag-label {
+  font-size: 7px;
+  color: var(--accent-cyan);
+}
+
+.rn-mini-tiles-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+
+.rn-mini-tile {
+  width: 34px;
+  height: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: 3px;
+}
+
+.rn-mini-tile.seq-lit {
+  background: rgba(56, 189, 248, 0.24);
+  border: 1.5px solid #38bdf8;
+  color: #7dd3fc;
+}
+
+.rn-mini-tile.shield-lit {
+  background: rgba(255, 145, 0, 0.28);
+  border: 2px solid #ff9100;
+  color: #fde047;
+}
+
+.rn-mini-shield-tag {
+  font-size: 6px;
+  line-height: 1;
+}
+
+.rn-diag-arrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.rn-bonus-callout.gold {
+  font-size: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 234, 0, 0.16);
+  border: 1.5px solid var(--accent-yellow);
+  color: var(--accent-yellow);
+}
+
+.rn-quantum-svg-wrap {
+  width: 100%;
+  background: #0b0f1a;
+  border: 1px solid #1e2638;
+  padding: 6px;
+}
+
+.rn-quantum-diagram-svg {
+  width: 100%;
+  height: 62px;
+  display: block;
+  font-family: 'Press Start 2P', monospace;
+}
+
+.rn-diag-caption {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.rn-mini-podium-preview {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+  gap: 8px;
+  height: 96px;
+  background: #07090f;
+  border: 1px solid #1e293b;
+  padding: 12px 24px 0;
+}
+
+.rn-pedestal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.rn-ped-nick {
+  font-size: 8px;
+  color: #e2e8f0;
+}
+
+.rn-ped-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  border: 1.5px solid #475569;
+  border-bottom: none;
+  background: #161f33;
+}
+
+.rn-pedestal.p1 .rn-ped-bar {
+  height: 62px;
+  border-color: var(--accent-yellow);
+  color: var(--accent-yellow);
+  background: rgba(255, 215, 0, 0.2);
+}
+
+.rn-pedestal.p2 .rn-ped-bar {
+  height: 46px;
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.rn-pedestal.p3 .rn-ped-bar {
+  height: 38px;
+  border-color: #f97316;
+  color: #fb923c;
+}
+
+.rn-pedestal.p4 .rn-ped-bar {
+  height: 28px;
+}
+
+.rn-pedestal.p5 .rn-ped-bar {
+  height: 22px;
 }

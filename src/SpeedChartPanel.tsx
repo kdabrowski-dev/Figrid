@@ -1,6 +1,7 @@
 import React from 'react';
-import { GameMode, TOTAL_CELLS } from './gameEngine';
+import { GameMode, TOTAL_CELLS, CURRENT_GAME_VERSION } from './gameEngine';
 import { UserProfile } from './apiClient';
+import { BadgeList } from './BadgeIcons';
 
 export interface SpeedSample {
   step: number;
@@ -21,9 +22,11 @@ interface SpeedChartPanelProps {
   onOpenAuth: () => void;
   onOpenLeaderboard: () => void;
   onOpenSettings: () => void;
+  onOpenHelp: () => void;
+  onOpenReleaseNotes: () => void;
   onRestart: () => void;
 
-  // Score box refs (replacing the removed chart)
+  // Score box refs
   scoreNodeRef: React.RefObject<HTMLSpanElement>;
   lastDeltaBadgeRef: React.RefObject<HTMLSpanElement>;
   deltaPopupRootRef: React.RefObject<HTMLDivElement>;
@@ -35,6 +38,7 @@ interface SpeedChartPanelProps {
   mistakesCount: number;
   sequencesHitCount: number;
   totalSequencesCount: number;
+  quantumMergesCount: number;
   reinforcedHitCount: number;
   totalReinforcedCount: number;
 }
@@ -48,6 +52,8 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
   onOpenAuth,
   onOpenLeaderboard,
   onOpenSettings,
+  onOpenHelp,
+  onOpenReleaseNotes,
   onRestart,
   scoreNodeRef,
   lastDeltaBadgeRef,
@@ -58,6 +64,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
   mistakesCount,
   sequencesHitCount,
   totalSequencesCount,
+  quantumMergesCount,
   reinforcedHitCount,
   totalReinforcedCount,
 }) => {
@@ -68,13 +75,39 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
     <aside className="side-panel">
       {/* TOP BOX: HEADER & CONTROLS (ALIGNED WITH TOP EDGE OF MATRIX BOX) */}
       <div className="panel-card right-header-card">
-        <div className="hud-center-brand">
-          <h1 className="brand-title-big">FIGRID</h1>
-          <span className="brand-subtitle">
-            {gameMode === 'OMNI'
-              ? '21x13 OMNI-DIRECTIONAL QUANTUM MATRIX'
-              : '21x13 SPEED MATRIX'}
-          </span>
+        <div className="hud-brand-top-row">
+          <button
+            type="button"
+            className="btn-version-tag"
+            title="View v0.0.2 Release Notes"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenReleaseNotes();
+            }}
+          >
+            v{CURRENT_GAME_VERSION}
+          </button>
+
+          <div className="hud-center-brand">
+            <h1 className="brand-title-big">FIGRID</h1>
+            <span className="brand-subtitle">
+              {gameMode === 'OMNI'
+                ? '21x13 OMNI-DIRECTIONAL QUANTUM MATRIX'
+                : '21x13 SPEED MATRIX'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="btn-help-question"
+            title="How to Play & Scoring Rules (?)"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenHelp();
+            }}
+          >
+            ?
+          </button>
         </div>
 
         <div className="right-header-status-row">
@@ -107,13 +140,16 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
         <div className="right-header-actions-grid">
           <button
             type="button"
-            className={`btn-arcade small ${currentUser ? 'gold' : 'cyan'}`}
+            className={`btn-arcade small ${currentUser ? 'gold' : 'cyan'} pilot-btn-with-badges`}
             onClick={(e) => {
               e.currentTarget.blur();
               onOpenAuth();
             }}
           >
-            {currentUser ? `PILOT: ${currentUser.username}` : 'LOGIN / REGISTER'}
+            <span>{currentUser ? `PILOT: ${currentUser.username}` : 'LOGIN / REGISTER'}</span>
+            {currentUser && currentUser.badges && currentUser.badges.length > 0 && (
+              <BadgeList badges={currentUser.badges.slice(0, 2)} size={15} />
+            )}
           </button>
           <button
             type="button"
@@ -155,7 +191,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
           <span className="panel-badge">{currentKps} KEYS/S</span>
         </div>
 
-        {/* SCORE BOX (IN PLACE OF THE REMOVED CHART) */}
+        {/* SCORE BOX */}
         <div className="embedded-score-box">
           <div ref={deltaPopupRootRef} className="delta-popup-layer" />
           <div className="bottom-score-top-row">
@@ -190,7 +226,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             <span className="telemetry-val highlight-magenta">{peakKps.toFixed(1)} keys/s</span>
           </div>
           <div className="telemetry-item">
-            <span className="telemetry-label">SHIELDS (2X BONUS)</span>
+            <span className="telemetry-label">SHIELDS CLEARED</span>
             <span className="telemetry-val highlight-cyan">
               {reinforcedHitCount} / {totalReinforcedCount}
             </span>
@@ -200,9 +236,13 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             <span className="telemetry-val highlight-red">{mistakesCount}</span>
           </div>
           <div className="telemetry-item">
-            <span className="telemetry-label">SECRET SEQUENCES</span>
+            <span className="telemetry-label">
+              {gameMode === 'OMNI' ? 'QUANTUM MERGES' : 'SECRET SEQUENCES'}
+            </span>
             <span className="telemetry-val highlight-gold">
-              {sequencesHitCount} / {totalSequencesCount}
+              {gameMode === 'OMNI'
+                ? `${quantumMergesCount}`
+                : `${sequencesHitCount} / ${totalSequencesCount}`}
             </span>
           </div>
         </div>

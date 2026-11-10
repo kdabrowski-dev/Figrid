@@ -1,20 +1,35 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { GameMode } from './gameEngine';
-import { apiFetchSharedLeaderboard, apiFetchMyRuns, UserProfile } from './apiClient';
+import {
+  GameMode,
+  CURRENT_GAME_VERSION,
+  PREVIOUS_GAME_VERSION,
+  V001_COMMIT_HASH,
+} from './gameEngine';
+import {
+  apiFetchSharedLeaderboard,
+  apiFetchMyRuns,
+  apiFetchArchivePodium,
+  UserProfile,
+} from './apiClient';
+import { UserBadge, BadgeList, BadgeInspectModal } from './BadgeIcons';
 
 export interface LeaderboardEntry {
   id: string;
   nick: string; // 3 uppercase letters
   score: number;
   mode: GameMode;
+  version?: string;
+  podiumRank?: number;
   totalTimeSec: number; // Total run time in seconds (e.g. 42.38)
   avgSpeedMs: number;
   mistakes: number;
   date: string;
   username?: string;
+  badges?: UserBadge[];
 }
 
-const LEADERBOARD_STORAGE_KEY = 'figrid_leaderboard_entries_v2';
+const LEADERBOARD_STORAGE_KEY = 'figrid_leaderboard_entries_v0_0_2';
+const LEGACY_V001_STORAGE_KEY = 'figrid_leaderboard_entries_v2';
 const MY_RUNS_STORAGE_KEY = 'figrid_my_runs_history_v1';
 
 export function loadLocalMyRuns(): LeaderboardEntry[] {
@@ -50,7 +65,7 @@ export function getPersonalBestEntriesForMode(
   mode: GameMode
 ): LeaderboardEntry[] {
   const modeRuns = entries
-    .filter((e) => e.mode === mode)
+    .filter((e) => e.mode === mode && (e.version || CURRENT_GAME_VERSION) === CURRENT_GAME_VERSION)
     .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec);
 
   const seenPlayers = new Set<string>();
@@ -74,7 +89,6 @@ export async function fetchInitialLeaderboard(): Promise<{
   entries: LeaderboardEntry[];
   isBackendOnline: boolean;
 }> {
-  // 1. Try shared PostgreSQL backend first
   const backendRes = await apiFetchSharedLeaderboard();
   if (backendRes.online) {
     try {
@@ -86,20 +100,6 @@ export async function fetchInitialLeaderboard(): Promise<{
       entries: backendRes.entries.sort((a, b) => b.score - a.score),
       isBackendOnline: true,
     };
-  }
-
-  // 2. Fallback to static ./leaderboard.json + browser localStorage when backend is offline
-  let diskEntries: LeaderboardEntry[] = [];
-  try {
-    const res = await fetch('./leaderboard.json', { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        diskEntries = data;
-      }
-    }
-  } catch {
-    // fallback if offline
   }
 
   let localEntries: LeaderboardEntry[] = [];
@@ -115,15 +115,8 @@ export async function fetchInitialLeaderboard(): Promise<{
     // ignore
   }
 
-  const byId = new Map<string, LeaderboardEntry>();
-  for (const e of [...diskEntries, ...localEntries]) {
-    if (e && e.id) {
-      byId.set(e.id, e);
-    }
-  }
-
   return {
-    entries: Array.from(byId.values()).sort((a, b) => b.score - a.score),
+    entries: localEntries.sort((a, b) => b.score - a.score),
     isBackendOnline: false,
   };
 }
@@ -134,13 +127,6 @@ export function saveLeaderboardToStorage(entries: LeaderboardEntry[]): void {
   } catch {
     // ignore
   }
-  fetch('/api/leaderboard', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(entries),
-  }).catch(() => {
-    // Static GitHub Pages fallback
-  });
 }
 
 export function exportLeaderboardJsonFile(entries: LeaderboardEntry[]): void {
@@ -150,7 +136,7 @@ export function exportLeaderboardJsonFile(entries: LeaderboardEntry[]): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'leaderboard.json';
+  a.download = `leaderboard_v${CURRENT_GAME_VERSION}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -177,8 +163,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   onBackToGame,
 }) => {
   const [selectedMode, setSelectedMode] = useState<GameMode>(defaultMode);
-  const [boardScope, setBoardScope] = useState<'GLOBAL_PB' | 'MY_HALL_OF_FAME'>('GLOBAL_PB');
+  const [boardScope, setBoardScope] = useState<'GLOBAL_PB' | 'MY_HALL_OF_FAME' | 'ARCHIVE_PODIUM'>(
+    'GLOBAL_PB'
+  );
+  // Single version filter in MY HALL OF FAME (only one selected at a time!)
+  const [personalVersionFilter, setPersonalVersionFilter] = useState<string>(CURRENT_GAME_VERSION);
+  const [archiveVersionFilter, setArchiveVersionFilter] = useState<string>(PREVIOUS_GAME_VERSION);
+
   const [serverMyRuns, setServerMyRuns] = useState<LeaderboardEntry[]>([]);
+  const [archivePodiumEntries, setArchivePodiumEntries] = useState<LeaderboardEntry[]>([]);
+  const [inspectedBadge, setInspectedBadge] = useState<UserBadge | null>(null);
 
   useEffect(() => {
     setSelectedMode(defaultMode);
@@ -186,17 +180,21 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
   useEffect(() => {
     if (currentUser) {
-      apiFetchMyRuns().then((runs) => {
-        if (runs.length > 0) {
-          setServerMyRuns(runs);
-        }
+      apiFetchMyRuns(personalVersionFilter).then((runs) => {
+        setServerMyRuns(runs);
       });
     } else {
       setServerMyRuns([]);
     }
-  }, [currentUser, entries]);
+  }, [currentUser, personalVersionFilter, entries]);
 
-  // 1. GLOBAL PERSONAL BESTS PER MODE (1 entry per player per mode)
+  useEffect(() => {
+    apiFetchArchivePodium(archiveVersionFilter).then((podium) => {
+      setArchivePodiumEntries(podium);
+    });
+  }, [archiveVersionFilter]);
+
+  // 1. GLOBAL v0.0.2 PERSONAL BESTS PER MODE
   const globalLinearPBs = useMemo(
     () => getPersonalBestEntriesForMode(entries, 'LINEAR'),
     [entries]
@@ -207,44 +205,87 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   );
   const activeGlobalPBs = selectedMode === 'OMNI' ? globalOmniPBs : globalLinearPBs;
 
-  // 2. MY HALL OF FAME (Complete run history for the logged-in user)
-  const allMyRuns = useMemo(() => {
+  // 2. MY HALL OF FAME (Filtered by strictly ONE selected version: 0.0.2 or 0.0.1)
+  const allMyRunsForVersion = useMemo(() => {
     if (!currentUser) return [];
     const targetUsername = currentUser.username.trim().toLowerCase();
     const localRuns = loadLocalMyRuns();
 
+    let legacyV001Runs: LeaderboardEntry[] = [];
+    if (personalVersionFilter === PREVIOUS_GAME_VERSION) {
+      try {
+        const rawLegacy = localStorage.getItem(LEGACY_V001_STORAGE_KEY);
+        if (rawLegacy) {
+          const parsed = JSON.parse(rawLegacy);
+          if (Array.isArray(parsed)) {
+            legacyV001Runs = parsed.map((r: LeaderboardEntry) => ({
+              ...r,
+              version: PREVIOUS_GAME_VERSION,
+            }));
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const mergedById = new Map<string, LeaderboardEntry>();
-    for (const r of [...entries, ...localRuns, ...serverMyRuns]) {
+    for (const r of [...entries, ...localRuns, ...legacyV001Runs, ...serverMyRuns]) {
       if (!r || !r.id) continue;
+      const entryVer = r.version || CURRENT_GAME_VERSION;
+      if (entryVer !== personalVersionFilter) continue;
       const matchesUsername =
         r.username && r.username.trim().toLowerCase() === targetUsername;
       if (matchesUsername) {
-        mergedById.set(String(r.id), r);
+        mergedById.set(String(r.id), {
+          ...r,
+          badges: r.badges && r.badges.length > 0 ? r.badges : currentUser.badges,
+        });
       }
     }
     return Array.from(mergedById.values());
-  }, [currentUser, entries, serverMyRuns]);
+  }, [currentUser, entries, serverMyRuns, personalVersionFilter]);
 
   const myLinearRuns = useMemo(
     () =>
-      allMyRuns
+      allMyRunsForVersion
         .filter((e) => e.mode === 'LINEAR')
         .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
-    [allMyRuns]
+    [allMyRunsForVersion]
   );
 
   const myOmniRuns = useMemo(
     () =>
-      allMyRuns
+      allMyRunsForVersion
         .filter((e) => e.mode === 'OMNI')
         .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
-    [allMyRuns]
+    [allMyRunsForVersion]
   );
 
   const activeMyRuns = selectedMode === 'OMNI' ? myOmniRuns : myLinearRuns;
-
   const displayedEntries =
     boardScope === 'GLOBAL_PB' ? activeGlobalPBs : activeMyRuns;
+
+  // 3. ARCHIVE HALL OF FAME 5-PLACE PODIUM (Ordered 4 - 2 - 1 - 3 - 5)
+  const activeArchiveTop5 = useMemo(() => {
+    const modePodium = archivePodiumEntries
+      .filter((e) => e.mode === selectedMode)
+      .sort((a, b) => (a.podiumRank ?? 99) - (b.podiumRank ?? 99))
+      .slice(0, 5);
+
+    const byRank = new Map<number, LeaderboardEntry>();
+    modePodium.forEach((entry, idx) => {
+      const r = entry.podiumRank ?? idx + 1;
+      byRank.set(r, entry);
+    });
+
+    // Visual order requested: [4, 2, 1, 3, 5] (Center is #1 tallest, flanked by #2 & #3, then #4 & #5)
+    const visualOrder = [4, 2, 1, 3, 5];
+    return visualOrder.map((rank) => ({
+      rank,
+      entry: byRank.get(rank) || null,
+    }));
+  }, [archivePodiumEntries, selectedMode]);
 
   // Personal KPI summary for My Hall of Fame
   const myPersonalBestScore = activeMyRuns.length > 0 ? activeMyRuns[0].score : 0;
@@ -263,20 +304,28 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         <div className="leaderboard-header">
           <div>
             <h2 className="leaderboard-title">
-              {boardScope === 'MY_HALL_OF_FAME'
-                ? `MY HALL OF FAME // ${selectedMode === 'OMNI' ? 'OMNI-8 MODE' : 'LINEAR MODE'}`
-                : `HALL OF FAME (PERSONAL BESTS) // ${
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? `ARCHIVE HALL OF FAME (v${archiveVersionFilter}) // ${
+                    selectedMode === 'OMNI' ? 'OMNI-8 PODIUM' : 'LINEAR PODIUM'
+                  }`
+                : boardScope === 'MY_HALL_OF_FAME'
+                ? `MY HALL OF FAME (v${personalVersionFilter}) // ${
+                    selectedMode === 'OMNI' ? 'OMNI-8 MODE' : 'LINEAR MODE'
+                  }`
+                : `HALL OF FAME v${CURRENT_GAME_VERSION} (PERSONAL BESTS) // ${
                     selectedMode === 'OMNI' ? 'OMNI-8 MODE' : 'LINEAR MODE'
                   }`}
             </h2>
             <p className="leaderboard-sub">
-              {boardScope === 'MY_HALL_OF_FAME'
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? `Immortalized Top 5 Pilots from Version ${archiveVersionFilter} (Commit ${V001_COMMIT_HASH})`
+                : boardScope === 'MY_HALL_OF_FAME'
                 ? currentUser
-                  ? `Personal Run History for Pilot [${currentUser.username}]`
+                  ? `Personal Run History for Pilot [${currentUser.username}] // Filtered by v${personalVersionFilter}`
                   : 'Log in to access your personal run history'
                 : isBackendOnline
-                ? 'One Personal Best per player per mode // Shared PostgreSQL Server'
-                : 'Offline Mode // One Personal Best per player per mode'}
+                ? `Active Season v${CURRENT_GAME_VERSION} // Server-Verified Personal Bests`
+                : `Active Season v${CURRENT_GAME_VERSION} // One Personal Best per player per mode`}
             </p>
           </div>
           <div className="leaderboard-actions">
@@ -294,7 +343,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               onClick={() => exportLeaderboardJsonFile(entries)}
               title="Download leaderboard.json backup"
             >
-              SAVE leaderboard.json
+              SAVE JSON
             </button>
             <button type="button" className="btn-arcade small" onClick={onBackToGame}>
               BACK TO GAME
@@ -302,8 +351,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </div>
         </div>
 
-        {/* TOP SCOPE SWITCHER: GLOBAL PERSONAL BESTS vs MY HALL OF FAME (RUN HISTORY) */}
-        <div className="leaderboard-scope-tabs">
+        {/* TOP SCOPE SWITCHER: GLOBAL v0.0.2 vs MY HALL OF FAME vs ARCHIVE PODIUM */}
+        <div className="leaderboard-scope-tabs three-cols">
           <button
             type="button"
             className={`leaderboard-scope-btn ${
@@ -311,7 +360,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setBoardScope('GLOBAL_PB')}
           >
-            GLOBAL LEADERBOARD (PERSONAL BESTS)
+            GLOBAL LEADERBOARD (v{CURRENT_GAME_VERSION})
           </button>
           <button
             type="button"
@@ -321,6 +370,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             onClick={() => setBoardScope('MY_HALL_OF_FAME')}
           >
             MY HALL OF FAME {currentUser ? `[${currentUser.username}]` : '(LOGIN)'}
+          </button>
+          <button
+            type="button"
+            className={`leaderboard-scope-btn archive ${
+              boardScope === 'ARCHIVE_PODIUM' ? 'active' : ''
+            }`}
+            onClick={() => setBoardScope('ARCHIVE_PODIUM')}
+          >
+            ARCHIVE HALL OF FAME (PODIUM)
           </button>
         </div>
 
@@ -334,10 +392,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             onClick={() => setSelectedMode('LINEAR')}
           >
             <span className="lb-tab-title">
-              {boardScope === 'MY_HALL_OF_FAME' ? 'MY LINEAR RUNS' : 'LINEAR RANKING'}
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? `v${archiveVersionFilter} LINEAR TOP 5 PODIUM`
+                : boardScope === 'MY_HALL_OF_FAME'
+                ? `MY LINEAR RUNS (v${personalVersionFilter})`
+                : 'LINEAR RANKING'}
             </span>
             <span className="lb-tab-count">
-              {boardScope === 'MY_HALL_OF_FAME'
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? 'TOP 5'
+                : boardScope === 'MY_HALL_OF_FAME'
                 ? `${myLinearRuns.length} RUNS`
                 : `${globalLinearPBs.length} PILOTS`}
             </span>
@@ -350,54 +414,171 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             onClick={() => setSelectedMode('OMNI')}
           >
             <span className="lb-tab-title">
-              {boardScope === 'MY_HALL_OF_FAME' ? 'MY OMNI-8 RUNS' : 'OMNI-8 RANKING'}
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? `v${archiveVersionFilter} OMNI-8 TOP 5 PODIUM`
+                : boardScope === 'MY_HALL_OF_FAME'
+                ? `MY OMNI-8 RUNS (v${personalVersionFilter})`
+                : 'OMNI-8 RANKING'}
             </span>
             <span className="lb-tab-count">
-              {boardScope === 'MY_HALL_OF_FAME'
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? 'TOP 5'
+                : boardScope === 'MY_HALL_OF_FAME'
                 ? `${myOmniRuns.length} RUNS`
                 : `${globalOmniPBs.length} PILOTS`}
             </span>
           </button>
         </div>
 
-        {/* IF IN MY HALL OF FAME & NOT LOGGED IN -> PROMPT TO LOGIN */}
-        {boardScope === 'MY_HALL_OF_FAME' && !currentUser ? (
+        {/* ===================================================================
+            VIEW A: ARCHIVE HALL OF FAME (5-PLACE GRAPHICAL FUTURISTIC PODIUM)
+            =================================================================== */}
+        {boardScope === 'ARCHIVE_PODIUM' ? (
+          <div className="archive-podium-section">
+            <div className="version-filter-bar">
+              <span className="version-filter-label">ARCHIVED SEASON VERSION:</span>
+              <button
+                type="button"
+                className={`version-pill-btn ${
+                  archiveVersionFilter === PREVIOUS_GAME_VERSION ? 'active' : ''
+                }`}
+                onClick={() => setArchiveVersionFilter(PREVIOUS_GAME_VERSION)}
+              >
+                v{PREVIOUS_GAME_VERSION} (COMMIT {V001_COMMIT_HASH})
+              </button>
+            </div>
+
+            {/* 5-PLACE FUTURISTIC GRAPHICAL PODIUM: [ #4 ] [ #2 ] [ #1 ] [ #3 ] [ #5 ] */}
+            <div className="futuristic-podium-stage">
+              {activeArchiveTop5.map(({ rank, entry }) => (
+                <div
+                  key={rank}
+                  className={`podium-column rank-col-${rank} ${
+                    entry ? 'occupied' : 'empty-slot'
+                  }`}
+                >
+                  {/* Pilot Hologram Card floating above the pedestal */}
+                  <div className="podium-pilot-card">
+                    <div className="podium-rank-crest">
+                      {rank === 1
+                        ? '1ST // CHAMPION'
+                        : rank === 2
+                        ? '2ND // SILVER'
+                        : rank === 3
+                        ? '3RD // BRONZE'
+                        : `${rank}TH PLACE`}
+                    </div>
+
+                    {entry ? (
+                      <>
+                        <div className="podium-nick-row">
+                          <span className="podium-nick">{entry.nick}</span>
+                          <BadgeList
+                            badges={entry.badges}
+                            size={rank === 1 ? 24 : 20}
+                            onInspectBadge={(b) => setInspectedBadge(b)}
+                          />
+                        </div>
+                        {entry.username && (
+                          <span className="podium-username">[{entry.username}]</span>
+                        )}
+                        <div className="podium-score-val">
+                          {entry.score.toLocaleString('en-US')} <small>PTS</small>
+                        </div>
+                        <div className="podium-telemetry-mini">
+                          <span>TIME: {entry.totalTimeSec.toFixed(2)}s</span>
+                          <span>PACE: {entry.avgSpeedMs}ms</span>
+                          <span>ERR: {entry.mistakes}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="podium-unclaimed">UNCLAIMED</div>
+                    )}
+                  </div>
+
+                  {/* Futuristic Glowing Pedestal Pillar */}
+                  <div className="podium-pillar">
+                    <div className="podium-pillar-top-lip" />
+                    <span className="podium-pillar-big-num">#{rank}</span>
+                    <div className="podium-pillar-grid-lines" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : boardScope === 'MY_HALL_OF_FAME' && !currentUser ? (
+          /* ===================================================================
+             VIEW B (LOGGED OUT): PROMPT TO LOGIN FOR MY HALL OF FAME
+             =================================================================== */
           <div className="personal-login-prompt">
             <p className="personal-login-text">
-              Log in to view your complete personal run history in MY HALL OF FAME.
+              Log in to view your complete personal run history and version filter in MY HALL OF
+              FAME.
             </p>
             <button type="button" className="btn-arcade gold" onClick={onOpenAuth}>
               LOGIN / REGISTER PILOT ACCOUNT
             </button>
           </div>
         ) : (
+          /* ===================================================================
+             VIEW B (LOGGED IN) & VIEW C (GLOBAL v0.0.2 LEADERBOARD TABLE)
+             =================================================================== */
           <>
-            {/* PERSONAL STATS SUMMARY BANNER IN MY HALL OF FAME */}
             {boardScope === 'MY_HALL_OF_FAME' && currentUser && (
-              <div className="personal-summary-strip">
-                <div className="personal-summary-item">
-                  <span className="telemetry-label">PERSONAL BEST ({selectedMode})</span>
-                  <span className="telemetry-val highlight-gold">
-                    {myPersonalBestScore.toLocaleString('en-US')}
-                  </span>
+              <>
+                {/* SINGLE VERSION SELECTOR (STRICTLY ONE VERSION SELECTED AT A TIME) */}
+                <div className="version-filter-bar">
+                  <span className="version-filter-label">FILTER BY GAME VERSION:</span>
+                  <div className="version-filter-buttons">
+                    <button
+                      type="button"
+                      className={`version-pill-btn ${
+                        personalVersionFilter === CURRENT_GAME_VERSION ? 'active' : ''
+                      }`}
+                      onClick={() => setPersonalVersionFilter(CURRENT_GAME_VERSION)}
+                    >
+                      v{CURRENT_GAME_VERSION} (CURRENT)
+                    </button>
+                    <button
+                      type="button"
+                      className={`version-pill-btn ${
+                        personalVersionFilter === PREVIOUS_GAME_VERSION ? 'active' : ''
+                      }`}
+                      onClick={() => setPersonalVersionFilter(PREVIOUS_GAME_VERSION)}
+                    >
+                      v{PREVIOUS_GAME_VERSION} (ARCHIVE)
+                    </button>
+                  </div>
                 </div>
-                <div className="personal-summary-item">
-                  <span className="telemetry-label">COMPLETED RUNS</span>
-                  <span className="telemetry-val highlight-cyan">{activeMyRuns.length}</span>
+
+                {/* PERSONAL STATS SUMMARY BANNER */}
+                <div className="personal-summary-strip">
+                  <div className="personal-summary-item">
+                    <span className="telemetry-label">
+                      PERSONAL BEST ({selectedMode} v{personalVersionFilter})
+                    </span>
+                    <span className="telemetry-val highlight-gold">
+                      {myPersonalBestScore.toLocaleString('en-US')}
+                    </span>
+                  </div>
+                  <div className="personal-summary-item">
+                    <span className="telemetry-label">COMPLETED RUNS</span>
+                    <span className="telemetry-val highlight-cyan">{activeMyRuns.length}</span>
+                  </div>
+                  <div className="personal-summary-item">
+                    <span className="telemetry-label">FASTEST CLEAR TIME</span>
+                    <span className="telemetry-val">
+                      {myBestTimeSec !== null ? `${myBestTimeSec.toFixed(2)}s` : '--'}
+                    </span>
+                  </div>
+                  <div className="personal-summary-item">
+                    <span className="telemetry-label">BEST AVG PACE</span>
+                    <span className="telemetry-val highlight-magenta">
+                      {myBestAvgPace !== null ? `${myBestAvgPace} ms` : '--'}
+                    </span>
+                  </div>
                 </div>
-                <div className="personal-summary-item">
-                  <span className="telemetry-label">FASTEST CLEAR TIME</span>
-                  <span className="telemetry-val">
-                    {myBestTimeSec !== null ? `${myBestTimeSec.toFixed(2)}s` : '--'}
-                  </span>
-                </div>
-                <div className="personal-summary-item">
-                  <span className="telemetry-label">BEST AVG PACE</span>
-                  <span className="telemetry-val highlight-magenta">
-                    {myBestAvgPace !== null ? `${myBestAvgPace} ms` : '--'}
-                  </span>
-                </div>
-              </div>
+              </>
             )}
 
             <div className="leaderboard-table-wrap">
@@ -405,7 +586,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 <thead>
                   <tr>
                     <th>{boardScope === 'MY_HALL_OF_FAME' ? 'RUN #' : 'RANK'}</th>
-                    <th>NICK</th>
+                    <th>PILOT &amp; BADGES</th>
                     <th>SCORE</th>
                     <th>TOTAL TIME</th>
                     <th>AVG PACE</th>
@@ -420,10 +601,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                         {boardScope === 'MY_HALL_OF_FAME'
                           ? `NO PERSONAL RUNS RECORDED IN ${
                               selectedMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'
-                            } MODE YET`
+                            } MODE FOR v${personalVersionFilter}`
                           : `NO SCORES RECORDED IN ${
                               selectedMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'
-                            } MODE YET`}
+                            } MODE FOR v${CURRENT_GAME_VERSION} YET`}
                       </td>
                     </tr>
                   ) : (
@@ -449,16 +630,22 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                             )}
                           </td>
                           <td className="col-nick">
-                            {entry.nick}
-                            {entry.username && (
-                              <span
-                                className="col-pilot-sub"
-                                title={`Account: ${entry.username}`}
-                              >
-                                {' '}
-                                [{entry.username}]
-                              </span>
-                            )}
+                            <div className="col-nick-flex">
+                              <span>{entry.nick}</span>
+                              {entry.username && (
+                                <span
+                                  className="col-pilot-sub"
+                                  title={`Account: ${entry.username}`}
+                                >
+                                  [{entry.username}]
+                                </span>
+                              )}
+                              <BadgeList
+                                badges={entry.badges}
+                                size={20}
+                                onInspectBadge={(b) => setInspectedBadge(b)}
+                              />
+                            </div>
                           </td>
                           <td className="col-score">
                             {entry.score.toLocaleString('en-US')}
@@ -481,6 +668,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </>
         )}
       </div>
+
+      {/* CLICK-TO-INSPECT BADGE MODAL */}
+      <BadgeInspectModal badge={inspectedBadge} onClose={() => setInspectedBadge(null)} />
     </section>
   );
 };

@@ -6,6 +6,7 @@ import {
   setStoredToken,
   UserProfile,
 } from './apiClient';
+import { UserBadge, BadgeIcon, BadgeInspectModal } from './BadgeIcons';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [nick, setNick] = useState(currentNick || 'AAA');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [inspectedBadge, setInspectedBadge] = useState<UserBadge | null>(null);
 
   if (!isOpen) return null;
 
@@ -95,9 +97,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <span className="hud-label">PREFERRED MODE</span>
               <strong>{currentUser.preferredMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}</strong>
             </div>
+
+            {/* PILOT COLLECTED BADGES SHOWCASE (CLICK ANY BADGE TO INSPECT) */}
+            <div className="profile-badges-section">
+              <span className="hud-label">EARNED PILOT BADGES (CLICK TO INSPECT)</span>
+              {currentUser.badges && currentUser.badges.length > 0 ? (
+                <div className="profile-badges-grid">
+                  {currentUser.badges.map((b) => (
+                    <button
+                      key={b.code}
+                      type="button"
+                      className="profile-badge-tile"
+                      onClick={() => setInspectedBadge(b)}
+                      title={`${b.title} - Click for details`}
+                    >
+                      <BadgeIcon code={b.code} size={38} />
+                      <span className="profile-badge-name">{b.title}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="profile-no-badges">
+                  No badges earned yet. Compete on the matrix to unlock honors.
+                </div>
+              )}
+            </div>
+
             <p className="modal-desc">
-              Your keybindings, preferred mode, and 3-letter tag are automatically synced with the
-              PostgreSQL backend whenever you save settings or submit a score.
+              Your keybindings, preferred mode, earned badges, and 3-letter tag are synced with the
+              PostgreSQL backend.
             </p>
             <div className="modal-footer">
               <button
@@ -204,6 +232,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </form>
         )}
       </div>
+
+      {/* CLICK-TO-INSPECT BADGE MODAL */}
+      <BadgeInspectModal badge={inspectedBadge} onClose={() => setInspectedBadge(null)} />
     </div>
   );
 };

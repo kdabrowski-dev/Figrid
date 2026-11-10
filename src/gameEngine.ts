@@ -9,8 +9,96 @@ export const OMNI_CENTER_INDEX = Math.floor(ROWS / 2) * COLS + Math.floor(COLS /
 export const SHIELD_REVEAL_DISTANCE = 7; // Linear mode: shield starts fading in 7 steps ahead
 export const OMNI_SHIELD_REVEAL_DISTANCE = 3; // Omni-8 mode: 2D plane radius halved (3 cells around head)
 
+export const CURRENT_GAME_VERSION = '0.0.2';
+export const PREVIOUS_GAME_VERSION = '0.0.1';
+export const V001_COMMIT_HASH = '73a71f0';
+
 export type GameMode = 'LINEAR' | 'OMNI';
 export type SequenceTier = 'SHORT' | 'MEDIUM' | 'LONG' | 'PHI';
+
+export interface QuantumMergeTierInfo {
+  title: string;
+  baseBonus: number;
+  pathBonus: number;
+  totalBonus: number;
+  color: string;
+  isSuper: boolean;
+}
+
+export function getQuantumMergeTierInfo(
+  mergeCount: number,
+  totalMergedPathSteps: number
+): QuantumMergeTierInfo {
+  const pathBonus = Math.round(totalMergedPathSteps * 35 * Math.max(1, mergeCount - 1));
+  if (mergeCount === 2) {
+    return {
+      title: 'DOUBLE QUANTUM!',
+      baseBonus: 250,
+      pathBonus,
+      totalBonus: 250 + pathBonus,
+      color: '#00f0ff',
+      isSuper: false,
+    };
+  }
+  if (mergeCount === 3) {
+    return {
+      title: 'TRIPLE QUANTUM!',
+      baseBonus: 600,
+      pathBonus,
+      totalBonus: 600 + pathBonus,
+      color: '#ff00e5',
+      isSuper: false,
+    };
+  }
+  if (mergeCount === 4) {
+    return {
+      title: 'QUADRUPLE QUANTUM!',
+      baseBonus: 1400,
+      pathBonus,
+      totalBonus: 1400 + pathBonus,
+      color: '#ffd700',
+      isSuper: false,
+    };
+  }
+  if (mergeCount === 5) {
+    return {
+      title: 'PENTA QUANTUM!!',
+      baseBonus: 2600,
+      pathBonus,
+      totalBonus: 2600 + pathBonus,
+      color: '#00ff66',
+      isSuper: true,
+    };
+  }
+  if (mergeCount === 6) {
+    return {
+      title: 'HEXA QUANTUM!!',
+      baseBonus: 4200,
+      pathBonus,
+      totalBonus: 4200 + pathBonus,
+      color: '#ff3300',
+      isSuper: true,
+    };
+  }
+  if (mergeCount === 7) {
+    return {
+      title: 'HEPTA QUANTUM!!!',
+      baseBonus: 6500,
+      pathBonus,
+      totalBonus: 6500 + pathBonus,
+      color: '#b829ff',
+      isSuper: true,
+    };
+  }
+  return {
+    title: 'OCTA OVERDRIVE QUANTUM!!!',
+    baseBonus: 9500,
+    pathBonus,
+    totalBonus: 9500 + pathBonus,
+    color: '#ffffff',
+    isSuper: true,
+  };
+}
 
 /**
  * Distinct Neon Palette for OMNI-8 Quantum Candidate Branches.
@@ -260,6 +348,44 @@ function shuffleArray<T>(arr: T[]): T[] {
  * - In OMNI mode, sequences are placed BOTH horizontally AND vertically across the 21x13 grid!
  */
 export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
+  const totalShields =
+    FAIR_BOARD_CONFIG.REINFORCED_IN_SEQUENCES + FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM;
+
+  // In v0.0.2, OMNI-8 mode has NO secret sequences at all!
+  if (mode === 'OMNI') {
+    const cells: CellData[] = new Array(TOTAL_CELLS);
+    for (let idx = 0; idx < TOTAL_CELLS; idx++) {
+      cells[idx] = {
+        index: idx,
+        digit: Math.floor(Math.random() * 10),
+        isReinforced: false,
+        sequenceInstanceId: null,
+        sequenceTier: null,
+        isSequenceStart: false,
+        isSequenceEnd: false,
+      };
+    }
+
+    const candidateIndices: number[] = [];
+    for (let idx = 0; idx < TOTAL_CELLS; idx++) {
+      if (idx !== OMNI_CENTER_INDEX) {
+        candidateIndices.push(idx);
+      }
+    }
+
+    const chosenReinforced = shuffleArray(candidateIndices).slice(0, totalShields);
+    for (const idx of chosenReinforced) {
+      cells[idx].isReinforced = true;
+    }
+
+    return {
+      cells,
+      sequences: [],
+      totalTheoreticalSeqBonus: 0,
+      totalReinforcedCount: totalShields,
+    };
+  }
+
   const shortPool = SEQUENCE_CATALOG.filter((s) => s.tier === 'SHORT');
   const med5Pool = SEQUENCE_CATALOG.filter((s) => s.tier === 'MEDIUM' && s.digits.length === 5);
   const phiPattern = SEQUENCE_CATALOG.find((s) => s.tier === 'PHI')!;
