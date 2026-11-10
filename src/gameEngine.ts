@@ -930,20 +930,60 @@ export const DEFAULT_KEY_BINDINGS: KeyBindingsMap = {
 const BINDINGS_STORAGE_KEY = 'figrid_key_bindings_v1';
 const MODE_STORAGE_KEY = 'figrid_game_mode_v1';
 
+/**
+ * Enforces strict 1-to-1 keybinding bijection:
+ * - Each digit (0..9) has strictly 1 bound key.
+ * - No two digits can ever share the same key.
+ */
+export function sanitizeKeyBindings(raw: unknown): KeyBindingsMap {
+  if (!raw || typeof raw !== 'object') {
+    return structuredClone(DEFAULT_KEY_BINDINGS);
+  }
+  const parsed = raw as Record<string | number, unknown>;
+  const result: KeyBindingsMap = {};
+  const usedKeys = new Set<string>();
+
+  for (let d = 0; d <= 9; d++) {
+    const candidateArr = parsed[d] ?? parsed[String(d)];
+    let chosenKey: string | null = null;
+    if (Array.isArray(candidateArr)) {
+      for (const item of candidateArr) {
+        const k = String(item || '').toLowerCase();
+        if (k && !usedKeys.has(k)) {
+          chosenKey = k;
+          break;
+        }
+      }
+    }
+    if (chosenKey) {
+      usedKeys.add(chosenKey);
+      result[d] = [chosenKey];
+    }
+  }
+
+  const fallbackPool = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'];
+  for (let d = 0; d <= 9; d++) {
+    if (!result[d] || result[d].length === 0) {
+      const defKey = String(d);
+      if (!usedKeys.has(defKey)) {
+        usedKeys.add(defKey);
+        result[d] = [defKey];
+      } else {
+        const replacement = fallbackPool.find((k) => !usedKeys.has(k)) || defKey;
+        usedKeys.add(replacement);
+        result[d] = [replacement];
+      }
+    }
+  }
+
+  return result;
+}
+
 export function loadKeyBindings(): KeyBindingsMap {
   try {
     const raw = localStorage.getItem(BINDINGS_STORAGE_KEY);
     if (!raw) return structuredClone(DEFAULT_KEY_BINDINGS);
-    const parsed = JSON.parse(raw);
-    const result: KeyBindingsMap = {};
-    for (let d = 0; d <= 9; d++) {
-      if (Array.isArray(parsed[d]) && parsed[d].length > 0) {
-        result[d] = parsed[d].map((k: string) => String(k).toLowerCase());
-      } else {
-        result[d] = [...DEFAULT_KEY_BINDINGS[d]];
-      }
-    }
-    return result;
+    return sanitizeKeyBindings(JSON.parse(raw));
   } catch {
     return structuredClone(DEFAULT_KEY_BINDINGS);
   }
@@ -951,7 +991,8 @@ export function loadKeyBindings(): KeyBindingsMap {
 
 export function saveKeyBindings(bindings: KeyBindingsMap): void {
   try {
-    localStorage.setItem(BINDINGS_STORAGE_KEY, JSON.stringify(bindings));
+    const clean = sanitizeKeyBindings(bindings);
+    localStorage.setItem(BINDINGS_STORAGE_KEY, JSON.stringify(clean));
   } catch {
     // ignore storage errors
   }

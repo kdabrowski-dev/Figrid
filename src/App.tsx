@@ -19,6 +19,7 @@ import {
   getSpectrumColor,
   computePointIntensity,
   KeyBindingsMap,
+  sanitizeKeyBindings,
   loadKeyBindings,
   saveKeyBindings,
   loadGameMode,
@@ -271,8 +272,9 @@ export const App: React.FC = () => {
         setNickLetters(user.nick.toUpperCase().split(''));
       }
       if (user.keyBindings && Object.keys(user.keyBindings).length > 0) {
-        setBindings(user.keyBindings);
-        saveKeyBindings(user.keyBindings);
+        const cleanBindings = sanitizeKeyBindings(user.keyBindings);
+        setBindings(cleanBindings);
+        saveKeyBindings(cleanBindings);
       }
       if (!hasStarted && (user.preferredMode === 'OMNI' || user.preferredMode === 'LINEAR')) {
         setGameMode(user.preferredMode);
@@ -1647,8 +1649,9 @@ export const App: React.FC = () => {
   ]);
 
   const handleSaveSettings = (newBindings: KeyBindingsMap, newMode: GameMode) => {
-    setBindings(newBindings);
-    saveKeyBindings(newBindings);
+    const cleanBindings = sanitizeKeyBindings(newBindings);
+    setBindings(cleanBindings);
+    saveKeyBindings(cleanBindings);
     let modeToSave = gameMode;
     if (!hasStarted && newMode !== gameMode) {
       setGameMode(newMode);
@@ -1658,7 +1661,7 @@ export const App: React.FC = () => {
     }
     if (currentUser) {
       apiUpdateUserSettings({
-        keyBindings: newBindings,
+        keyBindings: cleanBindings,
         preferredMode: modeToSave,
       }).then((updatedUser) => {
         if (updatedUser) setCurrentUser(updatedUser);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   KeyBindingsMap,
   DEFAULT_KEY_BINDINGS,
+  sanitizeKeyBindings,
   formatKeyLabel,
   GameMode,
 } from './gameEngine';
@@ -23,14 +24,14 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   onSave,
   onClose,
 }) => {
-  const [draft, setDraft] = useState<KeyBindingsMap>(() => structuredClone(bindings));
+  const [draft, setDraft] = useState<KeyBindingsMap>(() => sanitizeKeyBindings(bindings));
   const [draftMode, setDraftMode] = useState<GameMode>(gameMode);
   const [listeningDigit, setListeningDigit] = useState<number | null>(null);
   const [conflictError, setConflictError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setDraft(structuredClone(bindings));
+      setDraft(sanitizeKeyBindings(bindings));
       setDraftMode(gameMode);
       setListeningDigit(null);
       setConflictError(null);
@@ -62,7 +63,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             setConflictError(`Key [${keyLabel}] is already bound to DIGIT ${d}!`);
           } else {
             setConflictError(
-              `Key [${keyLabel}] is already assigned to DIGIT ${d}! Cannot bind duplicate keys.`
+              `Key [${keyLabel}] is already assigned to DIGIT ${d}! Each digit must have a unique key (1 key = 1 digit).`
             );
           }
           setListeningDigit(null);
@@ -73,8 +74,8 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
       setConflictError(null);
       setDraft((prev) => {
         const next: KeyBindingsMap = structuredClone(prev);
-        const existing = next[listeningDigit] || [];
-        next[listeningDigit] = [...existing.slice(-2), rawKey];
+        // Strict 1-to-1 binding: each digit maps to a single unique key
+        next[listeningDigit] = [rawKey];
         return next;
       });
       setListeningDigit(null);
@@ -85,21 +86,6 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   }, [listeningDigit, isOpen, draft]);
 
   if (!isOpen) return null;
-
-  const handleRemoveSingleKey = (digit: number, keyToRemove: string) => {
-    setConflictError(null);
-    setDraft((prev) => {
-      const currentKeys = prev[digit] || [String(digit)];
-      if (currentKeys.length <= 1) {
-        setConflictError(`DIGIT ${digit} must have at least 1 bound key!`);
-        return prev;
-      }
-      return {
-        ...prev,
-        [digit]: currentKeys.filter((k) => k !== keyToRemove),
-      };
-    });
-  };
 
   const handleResetDigit = (digit: number) => {
     setConflictError(null);
@@ -127,21 +113,21 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
   const handleApplyPresetQwerty = () => {
     setConflictError(null);
     setDraft({
-      1: ['1', 'q'],
-      2: ['2', 'w'],
-      3: ['3', 'e'],
-      4: ['4', 'r'],
-      5: ['5', 't'],
-      6: ['6', 'y'],
-      7: ['7', 'u'],
-      8: ['8', 'i'],
-      9: ['9', 'o'],
-      0: ['0', 'p', ' '],
+      1: ['q'],
+      2: ['w'],
+      3: ['e'],
+      4: ['r'],
+      5: ['t'],
+      6: ['y'],
+      7: ['u'],
+      8: ['i'],
+      9: ['o'],
+      0: ['p'],
     });
   };
 
   const handleSave = () => {
-    onSave(draft, draftMode);
+    onSave(sanitizeKeyBindings(draft), draftMode);
     onClose();
   };
 
@@ -198,10 +184,11 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
           </div>
         </div>
 
-        <div className="settings-section-title">DIGIT KEYBINDINGS</div>
+        <div className="settings-section-title">DIGIT KEYBINDINGS (STRICT 1-TO-1)</div>
         <p className="modal-desc">
-          Click <strong>+ ADD KEY</strong> next to any digit and press a key. Each key can only be
-          assigned to <strong>one digit at a time</strong> (duplicate keybindings are blocked).
+          Click <strong>REBIND KEY</strong> next to any digit and press a key. Strictly{' '}
+          <strong>one unique key per digit</strong> is allowed (binding multiple digits to one key or
+          multiple keys to one digit is blocked).
         </p>
 
         {conflictError && (
@@ -215,13 +202,13 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             DEFAULT [0-9]
           </button>
           <button type="button" className="btn-arcade small cyan" onClick={handleApplyPresetQwerty}>
-            PRESET: [0-9] + [QWERTYUIOP]
+            PRESET: [QWERTYUIOP]
           </button>
         </div>
 
         <div className="bindings-grid">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((digit) => {
-            const keys = draft[digit] || [String(digit)];
+            const keys = (draft[digit] || [String(digit)]).slice(0, 1);
             const isListening = listeningDigit === digit;
             return (
               <div key={digit} className={`binding-row ${isListening ? 'listening' : ''}`}>
@@ -231,13 +218,9 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
                     <span
                       key={k}
                       className="key-chip"
-                      title={keys.length > 1 ? 'Click to remove this key' : 'Primary key'}
-                      onClick={() => {
-                        if (keys.length > 1) handleRemoveSingleKey(digit, k);
-                      }}
+                      title="Assigned key (1-to-1)"
                     >
                       {formatKeyLabel(k)}
-                      {keys.length > 1 && <b className="chip-remove">x</b>}
                     </span>
                   ))}
                 </div>
@@ -250,7 +233,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
                       setListeningDigit(isListening ? null : digit);
                     }}
                   >
-                    {isListening ? 'PRESS A KEY...' : '+ ADD KEY'}
+                    {isListening ? 'PRESS A KEY...' : 'REBIND KEY'}
                   </button>
                   <button
                     type="button"
