@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="4" fill="#090b10" stroke="#252d44" stroke-width="2"/>
+  <!-- 8-bit 3D black drop shadow for F -->
+  <path d="M9 8H25V12H14V16H22V20H14V27H9V8Z" fill="#000000" transform="translate(2, 2)"/>
+  <!-- Main Press Start 2P style pixel 'F' in #00f0ff cyan -->
+  <path d="M9 7H25V11H14V15H22V19H14V26H9V7Z" fill="#00f0ff"/>
+</svg>
