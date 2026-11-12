@@ -367,21 +367,21 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div>
             <h2 className="leaderboard-title">
               {boardScope === 'ARCHIVE_PODIUM'
-                ? `ARCHIVE HALL OF FAME (v${archiveVersionFilter}) // ${modeDisplayName} PODIUM`
+                ? `ARCHIVE PODIUM (v${archiveVersionFilter}) // ${modeDisplayName}`
                 : boardScope === 'MY_HALL_OF_FAME'
-                ? `MY HALL OF FAME (v${personalVersionFilter}) // ${modeDisplayName} MODE`
-                : `HALL OF FAME v${CURRENT_GAME_VERSION} (PERSONAL BESTS) // ${modeDisplayName} MODE`}
+                ? `MY RUNS (v${personalVersionFilter}) // ${modeDisplayName}`
+                : `LEADERBOARD v${CURRENT_GAME_VERSION} // ${modeDisplayName}`}
             </h2>
             <p className="leaderboard-sub">
               {boardScope === 'ARCHIVE_PODIUM'
-                ? `Immortalized Top 5 Pilots from Version ${archiveVersionFilter} (Commit ${V001_COMMIT_HASH})`
+                ? `Top 5 Pilots from Version ${archiveVersionFilter} (Commit ${V001_COMMIT_HASH})`
                 : boardScope === 'MY_HALL_OF_FAME'
                 ? currentUser
-                  ? `Personal Run History for Pilot [${currentUser.username}] // Filtered by v${personalVersionFilter}`
+                  ? `Pilot [${currentUser.username}] // Filtered by v${personalVersionFilter}`
                   : 'Log in to access your personal run history'
-                : isBackendOnline
-                ? `Active Season v${CURRENT_GAME_VERSION} // Server-Verified Personal Bests`
-                : `Active Season v${CURRENT_GAME_VERSION} // One Personal Best per player per mode`}
+                : `Active Season v${CURRENT_GAME_VERSION} // Personal Bests (${
+                    isMobileSelected ? 'MOBILE TOUCH' : 'PC KEYBOARD'
+                  })`}
             </p>
           </div>
           <div className="leaderboard-actions">
@@ -399,10 +399,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               onClick={() => exportLeaderboardJsonFile(entries)}
               title="Download leaderboard.json backup"
             >
-              SAVE JSON
+              JSON
             </button>
             <button type="button" className="btn-arcade small" onClick={onBackToGame}>
-              BACK TO GAME
+              BACK
             </button>
           </div>
         </div>
@@ -416,7 +416,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setBoardScope('GLOBAL_PB')}
           >
-            GLOBAL LEADERBOARD (v{CURRENT_GAME_VERSION})
+            GLOBAL (v{CURRENT_GAME_VERSION})
           </button>
           <button
             type="button"
@@ -425,7 +425,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setBoardScope('MY_HALL_OF_FAME')}
           >
-            MY HALL OF FAME {currentUser ? `[${currentUser.username}]` : '(LOGIN)'}
+            MY RUNS {currentUser ? `[${currentUser.username}]` : ''}
           </button>
           <button
             type="button"
@@ -434,7 +434,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setBoardScope('ARCHIVE_PODIUM')}
           >
-            ARCHIVE HALL OF FAME (PODIUM)
+            ARCHIVE PODIUM
           </button>
         </div>
 
@@ -446,7 +446,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               className={`leaderboard-platform-btn ${platformFilter === 'PC' ? 'active' : ''}`}
               onClick={() => setPlatformFilter('PC')}
             >
-              PC / KEYBOARD LEADERBOARD
+              PC / KEYBOARD
             </button>
             <button
               type="button"
@@ -455,7 +455,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               }`}
               onClick={() => setPlatformFilter('MOBILE')}
             >
-              MOBILE / TOUCH LEADERBOARD [MOB]
+              MOBILE [MOB]
             </button>
           </div>
         )}
@@ -469,19 +469,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setSelectedMode('LINEAR')}
           >
-            <span className="lb-tab-title">
-              {boardScope === 'ARCHIVE_PODIUM'
-                ? `v${archiveVersionFilter} LINEAR TOP 5 PODIUM`
-                : boardScope === 'MY_HALL_OF_FAME'
-                ? `MY LINEAR RUNS (v${personalVersionFilter})`
-                : 'LINEAR RANKING'}
-            </span>
+            <span className="lb-tab-title">LINEAR</span>
             <span className="lb-tab-count">
               {boardScope === 'ARCHIVE_PODIUM'
                 ? 'TOP 5'
                 : boardScope === 'MY_HALL_OF_FAME'
-                ? `${myLinearRuns.length} RUNS`
-                : `${globalLinearPBs.length} PILOTS`}
+                ? `${myLinearRuns.length}`
+                : `${globalLinearPBs.length}`}
             </span>
           </button>
           <button
@@ -491,19 +485,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setSelectedMode('OMNI')}
           >
-            <span className="lb-tab-title">
-              {boardScope === 'ARCHIVE_PODIUM'
-                ? `v${archiveVersionFilter} OMNI-8 TOP 5 PODIUM`
-                : boardScope === 'MY_HALL_OF_FAME'
-                ? `MY OMNI-8 RUNS (v${personalVersionFilter})`
-                : 'OMNI-8 RANKING'}
-            </span>
+            <span className="lb-tab-title">OMNI-8</span>
             <span className="lb-tab-count">
               {boardScope === 'ARCHIVE_PODIUM'
                 ? 'TOP 5'
                 : boardScope === 'MY_HALL_OF_FAME'
-                ? `${myOmniRuns.length} RUNS`
-                : `${globalOmniPBs.length} PILOTS`}
+                ? `${myOmniRuns.length}`
+                : `${globalOmniPBs.length}`}
             </span>
           </button>
           <button
@@ -513,19 +501,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setSelectedMode('BINARY')}
           >
-            <span className="lb-tab-title">
-              {boardScope === 'ARCHIVE_PODIUM'
-                ? `v${archiveVersionFilter} BINARY TOP 5 PODIUM`
-                : boardScope === 'MY_HALL_OF_FAME'
-                ? `MY BINARY RUNS (v${personalVersionFilter})`
-                : 'BINARY RANKING'}
-            </span>
+            <span className="lb-tab-title">BINARY</span>
             <span className="lb-tab-count">
               {boardScope === 'ARCHIVE_PODIUM'
                 ? 'TOP 5'
                 : boardScope === 'MY_HALL_OF_FAME'
-                ? `${myBinaryRuns.length} RUNS`
-                : `${globalBinaryPBs.length} PILOTS`}
+                ? `${myBinaryRuns.length}`
+                : `${globalBinaryPBs.length}`}
             </span>
           </button>
         </div>

@@ -145,7 +145,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
               onOpenAuth();
             }}
           >
-            <span>{currentUser ? `PILOT: ${currentUser.username}` : 'LOGIN / REGISTER'}</span>
+            <span>{currentUser ? currentUser.username : 'LOGIN'}</span>
             {currentUser && currentUser.badges && currentUser.badges.length > 0 && (
               <BadgeList
                 badges={currentUser.badges.slice(0, 3)}
@@ -162,7 +162,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
               onOpenLeaderboard();
             }}
           >
-            LEADERBOARD
+            RANKS
           </button>
           <button
             type="button"
@@ -172,7 +172,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
               onOpenSettings();
             }}
           >
-            SETTINGS
+            KEYS
           </button>
           <button
             type="button"
@@ -182,7 +182,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
               onRestart();
             }}
           >
-            RESTART [ESC]
+            RESET
           </button>
         </div>
       </div>
