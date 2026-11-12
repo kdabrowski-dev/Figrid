@@ -378,19 +378,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div>
             <h2 className="leaderboard-title">
               {boardScope === 'ARCHIVE_PODIUM'
-                ? `ARCHIVE PODIUM (v${archiveVersionFilter}) // ${modeDisplayName}`
+                ? `ARCHIVE HALL OF FAME (v${archiveVersionFilter}) // ${modeDisplayName} PODIUM`
                 : boardScope === 'MY_HALL_OF_FAME'
-                ? `MY RUNS (v${personalVersionFilter}) // ${modeDisplayName}`
-                : `LEADERBOARD v${CURRENT_GAME_VERSION} // ${modeDisplayName}`}
+                ? `MY HALL OF FAME (v${personalVersionFilter}) // ${modeDisplayName} MODE`
+                : `HALL OF FAME v${CURRENT_GAME_VERSION} // ${modeDisplayName} MODE`}
             </h2>
             <p className="leaderboard-sub">
               {boardScope === 'ARCHIVE_PODIUM'
-                ? `Top 5 Pilots from Version ${archiveVersionFilter} (Commit ${V001_COMMIT_HASH})`
+                ? `Immortalized Top 5 Pilots from Version ${archiveVersionFilter} (Commit ${V001_COMMIT_HASH})`
                 : boardScope === 'MY_HALL_OF_FAME'
                 ? currentUser
-                  ? `Pilot [${currentUser.username}] // Filtered by v${personalVersionFilter}`
-                  : 'Log in to access your personal run history'
-                : `Active Season v${CURRENT_GAME_VERSION} // Personal Bests (${
+                  ? `Personal Hall of Fame for Pilot [${currentUser.username}] // Filtered by v${personalVersionFilter}`
+                  : 'Log in to access your personal hall of fame'
+                : `Active Season v${CURRENT_GAME_VERSION} // Server-Verified Personal Bests (${
                     isMobileSelected ? 'MOBILE TOUCH' : 'PC KEYBOARD'
                   })`}
             </p>
@@ -410,10 +410,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               onClick={() => exportLeaderboardJsonFile(entries)}
               title="Download leaderboard.json backup"
             >
-              JSON
+              SAVE JSON
             </button>
             <button type="button" className="btn-arcade small" onClick={onBackToGame}>
-              BACK
+              BACK TO GAME
             </button>
           </div>
         </div>
@@ -427,7 +427,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setBoardScope('GLOBAL_PB')}
           >
-            GLOBAL (v{CURRENT_GAME_VERSION})
+            GLOBAL LEADERBOARD (v{CURRENT_GAME_VERSION})
           </button>
           <button
             type="button"
@@ -436,7 +436,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setBoardScope('MY_HALL_OF_FAME')}
           >
-            MY RUNS {currentUser ? `[${currentUser.username}]` : ''}
+            MY HALL OF FAME {currentUser ? `[${currentUser.username}]` : ''}
           </button>
           <button
             type="button"
@@ -445,7 +445,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             }`}
             onClick={() => setBoardScope('ARCHIVE_PODIUM')}
           >
-            ARCHIVE PODIUM
+            ARCHIVE HALL OF FAME (PODIUM)
           </button>
         </div>
 

@@ -162,7 +162,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
               onOpenLeaderboard();
             }}
           >
-            RANKS
+            LEADERBOARD
           </button>
           <button
             type="button"
