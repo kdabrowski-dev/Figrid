@@ -98,6 +98,7 @@ function mapRawScoreEntry(item: Record<string, unknown>): LeaderboardEntry {
     avgSpeedMs: Number(item.avgSpeedMs ?? 0),
     mistakes: Number(item.mistakes ?? 0),
     isMobile: Boolean(item.isMobile),
+    createdAtIso: item.createdAtIso ? String(item.createdAtIso) : undefined,
     date: String(item.date ?? new Date().toISOString().slice(0, 10)),
     username: item.username ? String(item.username) : undefined,
     preferredMode: prefModeVal,

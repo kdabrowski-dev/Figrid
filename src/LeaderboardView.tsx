@@ -31,9 +31,20 @@ export interface LeaderboardEntry {
   mistakes: number;
   isMobile?: boolean;
   date: string;
+  createdAtIso?: string;
   username?: string;
   preferredMode?: GameMode;
   badges?: UserBadge[];
+}
+
+function formatEntryDateTime(entry: LeaderboardEntry): string {
+  if (!entry.createdAtIso) return entry.date;
+  const parsed = new Date(entry.createdAtIso);
+  if (Number.isNaN(parsed.getTime())) return entry.date;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} ${pad(
+    parsed.getHours()
+  )}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
 }
 
 const LEADERBOARD_STORAGE_KEY = 'figrid_leaderboard_entries_v0_0_2';
@@ -758,7 +769,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                           </td>
                           <td className="col-pace">{entry.avgSpeedMs} ms</td>
                           <td className="col-mistakes">{entry.mistakes}</td>
-                          <td className="col-date">{entry.date}</td>
+                          <td className="col-date" title={formatEntryDateTime(entry)}>
+                            {entry.date}
+                          </td>
                         </tr>
                       );
                     })

@@ -57,6 +57,64 @@ const MAX_BONUS_DELTA_MS = 1000;
 
 const WELCOME_SEEN_KEY = 'figrid_welcome_guide_seen_v1';
 const RELEASE_NOTES_SEEN_KEY = 'figrid_release_notes_seen_v0_0_2';
+const FINISHED_RUN_HISTORY_KEY = 'figrid_finished_run_history_v1';
+const FINISHED_RUN_HISTORY_LIMIT = 30;
+const FATIGUE_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+interface FinishedRunRecord {
+  score: number;
+  mode: GameMode;
+  isMobile: boolean;
+  finishedAt: number;
+}
+
+function loadFinishedRunHistory(): FinishedRunRecord[] {
+  try {
+    const raw = localStorage.getItem(FINISHED_RUN_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFinishedRunHistory(history: FinishedRunRecord[]): void {
+  try {
+    localStorage.setItem(FINISHED_RUN_HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+const OverheatedSynapseIcon: React.FC = () => (
+  <svg className="overheated-synapse-svg" viewBox="0 0 120 64" aria-hidden="true">
+    {/* Presynaptic axon terminal */}
+    <path
+      className="synapse-terminal pre"
+      d="M4 20 C20 18 30 14 40 20 C48 25 48 39 40 44 C30 50 20 46 4 44 Z"
+    />
+    {/* Postsynaptic dendrite */}
+    <path
+      className="synapse-terminal post"
+      d="M116 20 C100 18 90 14 80 20 C72 25 72 39 80 44 C90 50 100 46 116 44 Z"
+    />
+    {/* Vesicles */}
+    <circle className="synapse-vesicle" cx="30" cy="26" r="3" />
+    <circle className="synapse-vesicle" cx="34" cy="37" r="2.5" />
+    <circle className="synapse-vesicle" cx="24" cy="33" r="2" />
+    {/* Dropped neurotransmitter packets in the synaptic cleft */}
+    <rect className="synapse-packet p1" x="51" y="24" width="4" height="4" />
+    <rect className="synapse-packet p2" x="58" y="33" width="4" height="4" />
+    <rect className="synapse-packet p3" x="65" y="27" width="4" height="4" />
+    {/* Overload spark */}
+    <path className="synapse-spark" d="M60 4 L54 18 L61 18 L56 30 L68 13 L61 13 L66 4 Z" />
+    {/* Heat waves */}
+    <path className="synapse-heat h1" d="M48 58 q4 -5 0 -10 q-4 -5 0 -10" />
+    <path className="synapse-heat h2" d="M60 60 q4 -5 0 -10 q-4 -5 0 -10" />
+    <path className="synapse-heat h3" d="M72 58 q4 -5 0 -10 q-4 -5 0 -10" />
+  </svg>
+);
 
 interface OmniBranch {
   headIndex: number;
@@ -174,6 +232,11 @@ export const App: React.FC = () => {
     badge?: UserBadge | null;
   } | null>(null);
   const [unlockedBadgesOnRun, setUnlockedBadgesOnRun] = useState<UserBadge[]>([]);
+  const [fatigueAlert, setFatigueAlert] = useState<{
+    suggestedMode: GameMode;
+    scores: number[];
+  } | null>(null);
+  const lastRecordedRunStartRef = useRef<number>(0);
 
   // Telemetry state for right panel and summary
   const [, setChartTick] = useState(0);
@@ -718,6 +781,7 @@ export const App: React.FC = () => {
       setHasSubmittedScore(false);
       setBotAlertInfo(null);
       setUnlockedBadgesOnRun([]);
+      setFatigueAlert(null);
       setNickCursor(0);
       setQuantumLasers([]);
       setBinaryBitCursor(0);
@@ -913,6 +977,7 @@ export const App: React.FC = () => {
       mistakes: mistakesCount,
       isMobile: isMobileRun,
       date: new Date().toISOString().slice(0, 10),
+      createdAtIso: new Date().toISOString(),
       username: currentUser.username,
       badges: verifyRes.user?.badges ?? currentUser.badges,
     };
@@ -930,6 +995,53 @@ export const App: React.FC = () => {
     });
     setActiveTab('LEADERBOARD');
   }, [hasSubmittedScore, nickLetters, gameMode, avgSpeedMs, mistakesCount, currentUser, isMobileDevice]);
+
+  // Record every finished run locally (saved or not) and detect a 3-run downward trend within 2 hours
+  useEffect(() => {
+    if (!isFinished) return;
+    const eng = engineRef.current;
+    if (!eng.runStartTime || lastRecordedRunStartRef.current === eng.runStartTime) return;
+    lastRecordedRunStartRef.current = eng.runStartTime;
+
+    const isMobileRun =
+      isMobileDevice ||
+      telemetryEventsRef.current.some((ev) =>
+        String(ev.physKeyCode || '').toLowerCase().startsWith('touchdigit')
+      );
+    const nowMs = Date.now();
+    const newRecord: FinishedRunRecord = {
+      score: eng.score,
+      mode: gameMode,
+      isMobile: isMobileRun,
+      finishedAt: nowMs,
+    };
+
+    const history = [...loadFinishedRunHistory(), newRecord].slice(-FINISHED_RUN_HISTORY_LIMIT);
+    saveFinishedRunHistory(history);
+
+    const recentSameContext = history.filter(
+      (r) =>
+        r.mode === gameMode &&
+        r.isMobile === isMobileRun &&
+        nowMs - r.finishedAt <= FATIGUE_WINDOW_MS
+    );
+    const lastThree = recentSameContext.slice(-3);
+    if (
+      lastThree.length === 3 &&
+      lastThree[0].score > lastThree[1].score &&
+      lastThree[1].score > lastThree[2].score
+    ) {
+      const suggestedMode: GameMode = gameMode === 'LINEAR' ? 'OMNI' : 'LINEAR';
+      setFatigueAlert({ suggestedMode, scores: lastThree.map((r) => r.score) });
+    }
+  }, [isFinished, gameMode, isMobileDevice]);
+
+  const handleFatigueCooldownSwitch = (targetMode: GameMode) => {
+    setFatigueAlert(null);
+    setGameMode(targetMode);
+    saveGameMode(targetMode);
+    startNewGame(targetMode);
+  };
 
   // Smooth arcade score counter interpolation loop
   useEffect(() => {
@@ -2351,6 +2463,35 @@ export const App: React.FC = () => {
                       ? `Overclock Bonuses: ${sequencesHitCount}`
                       : `Secret Sequences: ${sequencesHitCount}/${board.sequences.length}`}
                   </p>
+
+                  {fatigueAlert && (
+                    <div className="fatigue-alert-card">
+                      <OverheatedSynapseIcon />
+                      <div className="fatigue-alert-body">
+                        <h3 className="fatigue-alert-title">
+                          BIOMETRIC SENTINEL // AXONAL PACKET DESYNC
+                        </h3>
+                        <p className="fatigue-alert-desc">
+                          Downward performance gradient across your last 3 runs (&lt;120 min).
+                          Repetitive dopamine-loop saturation has triggered prefrontal thermal
+                          throttling and elevated neuromuscular jitter. Switch protocol to{' '}
+                          {fatigueAlert.suggestedMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'} to reset
+                          synaptic impedance.
+                        </p>
+                        <span className="fatigue-alert-trace">
+                          TRACE: {fatigueAlert.scores.map((s) => s.toLocaleString('en-US')).join(' > ')}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-arcade small fatigue-cooldown-btn"
+                          onClick={() => handleFatigueCooldownSwitch(fatigueAlert.suggestedMode)}
+                        >
+                          COOLDOWN IN{' '}
+                          {fatigueAlert.suggestedMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {botAlertInfo ? (
                     <div className="bot-alert-card">
