@@ -954,6 +954,7 @@ body {
   padding: 22px;
   gap: 18px;
   justify-content: space-between;
+  overflow: hidden;
 }
 
 .embedded-score-box {
@@ -1845,8 +1846,8 @@ body {
 }
 
 .score-delta-popup.super-quantum-popup {
-  font-size: 15px !important;
-  letter-spacing: 1px;
+  font-size: 11px !important;
+  letter-spacing: 0.5px;
   animation: superQuantumFloatOut 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
 }
 
@@ -1857,19 +1858,19 @@ body {
   }
   20% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--jitter-x, 0px)), -14px) scale(1.62);
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -12px) scale(1.18);
   }
   45% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--jitter-x, 0px)), -22px) scale(1.28);
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -18px) scale(1.06);
   }
   75% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--jitter-x, 0px)), -32px) scale(1.36);
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -26px) scale(1.1);
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--jitter-x, 0px)), -48px) scale(0.95);
+    transform: translate(calc(-50% + var(--jitter-x, 0px)), -38px) scale(0.92);
   }
 }
 

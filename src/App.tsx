@@ -1160,7 +1160,7 @@ export const App: React.FC = () => {
           if ((targetDigit === 0 || targetDigit === 7) && avgTileBitDelta <= 320) {
             pointsGained += 220;
             eng.binaryOverclocks += 1;
-            overclockTags.push('PURE SIGNAL +220');
+            overclockTags.push('PURE SIGNAL');
             isSuperOverclock = true;
           }
 
@@ -1172,7 +1172,7 @@ export const App: React.FC = () => {
           ) {
             pointsGained += 450;
             eng.binaryOverclocks += 1;
-            overclockTags.push('XOR-7 COMPLEMENT +450');
+            overclockTags.push('XOR-7 FLIP');
             isSuperOverclock = true;
           }
 
@@ -1183,7 +1183,7 @@ export const App: React.FC = () => {
             if (rowAvgBitDelta <= 380) {
               pointsGained += 650;
               eng.binaryOverclocks += 1;
-              overclockTags.push('ROW REGISTER FLUSH +650');
+              overclockTags.push('ROW FLUSH');
               isSuperOverclock = true;
             }
           }
@@ -1199,7 +1199,7 @@ export const App: React.FC = () => {
 
           let tag = '';
           if (overclockTags.length > 0) {
-            tag = `[${overclockTags.join(' // ')}]`;
+            tag = `[${overclockTags.join(' + ')}]`;
           } else if (isSecondShieldHit) {
             tag = '[SHIELD 2X!]';
           }
