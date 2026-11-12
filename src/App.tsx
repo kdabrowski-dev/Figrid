@@ -446,6 +446,7 @@ export const App: React.FC = () => {
     const isAmbiguous = branches.length > 1;
     const headIndices: number[] = [];
     const headSet = new Set<number>(branches.map((b) => b.headIndex));
+    const availableNeighborSet = new Set<number>();
     const visitedByHead = new Map<number, ReadonlySet<number>>();
     const isInitialCellPending = eng.clearedCount === 0;
 
@@ -510,6 +511,7 @@ export const App: React.FC = () => {
         const neighbors = getAvailableOmniNeighbors(br.headIndex, eng.doneMask, br.visitedSet);
         for (let n = 0; n < neighbors.length; n++) {
           const nIdx = neighbors[n];
+          availableNeighborSet.add(nIdx);
           const nNode = cellNodesRef.current[nIdx];
           if (nNode) {
             nNode.classList.add('omni-available');
@@ -549,7 +551,7 @@ export const App: React.FC = () => {
         continue;
       }
 
-      const alpha2D = getOmni2DShieldAlpha(i, headIndices);
+      const alpha2D = getOmni2DShieldAlpha(i, headIndices, availableNeighborSet);
       node.style.setProperty('--shield-alpha', String(alpha2D));
       if (alpha2D > 0 && !headSet.has(i)) {
         node.classList.add('shield-approaching');

@@ -357,8 +357,10 @@ body {
 }
 
 .cell.omni-wrap-ghost .cell-shield-svg.ghost-shield {
-  opacity: 0.78;
-  transform: translate(-50%, -50%) scale(0.95);
+  --shield-alpha: 1;
+  opacity: 0.88 !important;
+  transform: translate(-50%, -50%) scale(0.96);
+  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.8));
 }
 
 @keyframes wrapGhostFadeIn {

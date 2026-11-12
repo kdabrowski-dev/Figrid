@@ -664,29 +664,45 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
 // LINEAR & 2D TORUS PROXIMITY ALPHA FOR REINFORCED SHIELDS
 // ============================================================================
 
-export function getShieldProximityAlpha(cellIndex: number, currentIndex: number): number {
+export function getShieldProximityAlpha(
+  cellIndex: number,
+  currentIndex: number,
+  revealDist: number = SHIELD_REVEAL_DISTANCE
+): number {
   const distance = cellIndex - currentIndex;
-  if (distance < 0 || distance > SHIELD_REVEAL_DISTANCE) {
+  if (distance < 0 || distance > revealDist) {
     return 0;
   }
   if (distance === 0) {
     return 1;
   }
-  const factor = (SHIELD_REVEAL_DISTANCE - distance + 1) / SHIELD_REVEAL_DISTANCE;
+  const factor = (revealDist - distance + 1) / revealDist;
   return Number(factor.toFixed(3));
 }
 
 /**
  * Computes 2D Chebyshev (8-way king move) distance on a 21x13 torus (with edge wrap-around)
- * from any active head to `cellIndex`, returning the highest proximity alpha in [0..1].
+ * from any active head (and any phase-jumped / wrapped clickable neighbor) to `cellIndex`,
+ * returning the highest proximity alpha in [0..1].
+ * Any directly clickable neighbor (`availableIndices`) is treated as distance 1 (alpha = 1)
+ * even if reached across cleared tiles or board edges!
  */
-export function getOmni2DShieldAlpha(cellIndex: number, headIndices: number[]): number {
+export function getOmni2DShieldAlpha(
+  cellIndex: number,
+  headIndices: number[],
+  availableIndices?: ReadonlySet<number>
+): number {
+  if (availableIndices && availableIndices.has(cellIndex)) {
+    return 1;
+  }
+
   const targetR = Math.floor(cellIndex / COLS);
   const targetC = cellIndex % COLS;
 
   let minDist = Infinity;
   for (let i = 0; i < headIndices.length; i++) {
     const hIdx = headIndices[i];
+    if (hIdx === cellIndex) return 1;
     const hR = Math.floor(hIdx / COLS);
     const hC = hIdx % COLS;
 
@@ -700,10 +716,26 @@ export function getOmni2DShieldAlpha(cellIndex: number, headIndices: number[]): 
     }
   }
 
+  if (availableIndices) {
+    for (const aIdx of availableIndices) {
+      const aR = Math.floor(aIdx / COLS);
+      const aC = aIdx % COLS;
+      const rawDr = Math.abs(targetR - aR);
+      const rawDc = Math.abs(targetC - aC);
+      const dr = Math.min(rawDr, ROWS - rawDr);
+      const dc = Math.min(rawDc, COLS - rawDc);
+      // An available tile is 1 step from the head, so tiles around it are (1 + dist) steps away
+      const effectiveDist = 1 + Math.max(dr, dc);
+      if (effectiveDist < minDist) {
+        minDist = effectiveDist;
+      }
+    }
+  }
+
   if (minDist > OMNI_SHIELD_REVEAL_DISTANCE) {
     return 0;
   }
-  if (minDist === 0) {
+  if (minDist <= 1) {
     return 1;
   }
   const factor =
