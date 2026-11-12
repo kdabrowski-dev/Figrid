@@ -2966,11 +2966,11 @@ body {
   color: #ffffff !important;
 }
 
-/* Compact 7x7 Square Binary Matrix */
-.board-grid-7x7 {
+/* Compact 8x8 Square Binary Matrix */
+.board-grid-8x8 {
   display: grid;
-  grid-template-columns: repeat(7, 38px);
-  grid-template-rows: repeat(7, 34px);
+  grid-template-columns: repeat(8, 38px);
+  grid-template-rows: repeat(8, 34px);
   gap: 4px;
   background: #0b0e17;
   border: 1.5px solid #232d46;

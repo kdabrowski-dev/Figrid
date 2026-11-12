@@ -137,13 +137,13 @@ export const WelcomeGuideModal: React.FC<WelcomeGuideModalProps> = ({ isOpen, on
             {/* BINARY 3-BIT DECODER MODE */}
             <div className="guide-card mode-box-binary" style={{ marginTop: '12px' }}>
               <div className="guide-mode-header">
-                <span className="mode-pill binary">BINARY MODE (7x7 MATRIX)</span>
+                <span className="mode-pill binary">BINARY MODE (8x8 MATRIX)</span>
                 <span className="guide-mode-tag">3-BIT OCTAL DECODER</span>
               </div>
               <ul className="guide-list">
                 <li>
                   <strong>Decimal Sight, Binary Input:</strong> A compact{' '}
-                  <strong>7x7 matrix (49 tiles)</strong> displays digits <strong>0 through 7</strong>
+                  <strong>8x8 matrix (64 tiles)</strong> displays digits <strong>0 through 7</strong>
                   , with a live 0–7 binary reference table on the left and a{' '}
                   <strong>3-Bit Input Register</strong> above the board. Decode each tile
                   left-to-right by typing its 3 binary bits using keys <strong>[0]</strong> and{' '}

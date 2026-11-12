@@ -191,6 +191,12 @@ export const App: React.FC = () => {
   const [binaryBitCursor, setBinaryBitCursor] = useState<number>(0);
   const [binaryBitErrorSlot, setBinaryBitErrorSlot] = useState<number | null>(null);
   const [binaryActiveTargetIdx, setBinaryActiveTargetIdx] = useState<number>(0);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Direct DOM references for O(1) zero-reflow updates across the 273 cells
   const cellNodesRef = useRef<(HTMLDivElement | null)[]>(new Array(TOTAL_CELLS).fill(null));
@@ -704,6 +710,7 @@ export const App: React.FC = () => {
       setBinaryBitCursor(0);
       setBinaryBitErrorSlot(null);
       setBinaryActiveTargetIdx(0);
+      setConfirmDialog(null);
       setChartTick((t) => t + 1);
 
       if (scoreNodeRef.current) {
@@ -734,7 +741,22 @@ export const App: React.FC = () => {
     [gameMode]
   );
 
-  // Initialize DOM nodes when a new board or gameMode is set
+  const requestRestartGame = useCallback(() => {
+    if (hasStarted && !engineRef.current.isFinished) {
+      setConfirmDialog({
+        title: 'ABORT ACTIVE RUN?',
+        message:
+          'Your current run is in progress. Are you sure you want to abort and restart the board?',
+        confirmLabel: 'YES, RESTART [ENTER]',
+        onConfirm: () => {
+          setConfirmDialog(null);
+          startNewGame();
+        },
+      });
+    } else {
+      startNewGame();
+    }
+  }, [hasStarted, startNewGame]);
   useEffect(() => {
     if (activeTab !== 'GAME') return;
     const eng = engineRef.current;
@@ -915,6 +937,17 @@ export const App: React.FC = () => {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (confirmDialog) {
+        if (e.key === 'Enter' || e.key.toLowerCase() === 'y') {
+          e.preventDefault();
+          confirmDialog.onConfirm();
+        } else if (e.key === 'Escape' || e.key.toLowerCase() === 'n') {
+          e.preventDefault();
+          setConfirmDialog(null);
+        }
+        return;
+      }
+
       if (
         isBindingsOpen ||
         isAuthOpen ||
@@ -978,7 +1011,7 @@ export const App: React.FC = () => {
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        startNewGame();
+        requestRestartGame();
         return;
       }
 
@@ -1143,9 +1176,10 @@ export const App: React.FC = () => {
             isSuperOverclock = true;
           }
 
-          // 3. ROW REGISTER FLUSH (+650 pts): completing a 7-tile row register at high speed
+          // 3. ROW REGISTER FLUSH (+650 pts): completing an 8-tile row register at high speed
           if (idx % BINARY_COLS === BINARY_COLS - 1) {
-            const rowAvgBitDelta = Math.max(1, now - eng.binaryRowFirstBitTs) / 20.0;
+            const rowAvgBitDelta =
+              Math.max(1, now - eng.binaryRowFirstBitTs) / (BINARY_COLS * 3 - 1);
             if (rowAvgBitDelta <= 380) {
               pointsGained += 650;
               eng.binaryOverclocks += 1;
@@ -1931,6 +1965,7 @@ export const App: React.FC = () => {
     board,
     gameMode,
     activeTab,
+    confirmDialog,
     isBindingsOpen,
     isAuthOpen,
     isWelcomeOpen,
@@ -1939,6 +1974,7 @@ export const App: React.FC = () => {
     hasSubmittedScore,
     nickCursor,
     startNewGame,
+    requestRestartGame,
     handleSaveScoreToLeaderboard,
     triggerBoardErrorFlash,
     triggerQuantumLaserSweep,
@@ -1951,11 +1987,6 @@ export const App: React.FC = () => {
     const cleanBindings = sanitizeKeyBindings(newBindings);
     setBindings(cleanBindings);
     saveKeyBindings(cleanBindings);
-    if (!hasStarted && newMode !== gameMode) {
-      setGameMode(newMode);
-      saveGameMode(newMode);
-      startNewGame(newMode);
-    }
     if (currentUser) {
       apiUpdateUserSettings({
         keyBindings: cleanBindings,
@@ -1963,15 +1994,71 @@ export const App: React.FC = () => {
         if (updatedUser) setCurrentUser(updatedUser);
       });
     }
+    if (newMode !== gameMode) {
+      const modeLabel =
+        newMode === 'OMNI' ? 'OMNI-8' : newMode === 'BINARY' ? 'BINARY (8x8)' : 'LINEAR';
+      if (hasStarted && !engineRef.current.isFinished) {
+        setConfirmDialog({
+          title: 'SWITCH GAME MODE?',
+          message: `Your current run is in progress. Switch mode to ${modeLabel} and abort your active run?`,
+          confirmLabel: `SWITCH TO ${modeLabel} [ENTER]`,
+          onConfirm: () => {
+            setConfirmDialog(null);
+            setGameMode(newMode);
+            saveGameMode(newMode);
+            startNewGame(newMode);
+          },
+        });
+      } else {
+        setGameMode(newMode);
+        saveGameMode(newMode);
+        startNewGame(newMode);
+      }
+    }
   };
 
   const handleQuickToggleMode = () => {
-    if (hasStarted) return;
     const nextMode: GameMode =
       gameMode === 'LINEAR' ? 'OMNI' : gameMode === 'OMNI' ? 'BINARY' : 'LINEAR';
+    const modeLabel =
+      nextMode === 'OMNI' ? 'OMNI-8' : nextMode === 'BINARY' ? 'BINARY (8x8)' : 'LINEAR';
+    if (hasStarted && !engineRef.current.isFinished) {
+      setConfirmDialog({
+        title: 'SWITCH GAME MODE?',
+        message: `Your current run is in progress. Switch mode to ${modeLabel} and abort your active run?`,
+        confirmLabel: `SWITCH TO ${modeLabel} [ENTER]`,
+        onConfirm: () => {
+          setConfirmDialog(null);
+          setGameMode(nextMode);
+          saveGameMode(nextMode);
+          startNewGame(nextMode);
+        },
+      });
+      return;
+    }
     setGameMode(nextMode);
     saveGameMode(nextMode);
     startNewGame(nextMode);
+  };
+
+  const handleRequestOpenLeaderboard = () => {
+    if (hasStarted && !engineRef.current.isFinished) {
+      setConfirmDialog({
+        title: 'LEAVE ACTIVE RUN?',
+        message:
+          'Your current run is in progress. Opening the Leaderboard will abort this run. Continue?',
+        confirmLabel: 'OPEN LEADERBOARD [ENTER]',
+        onConfirm: () => {
+          setConfirmDialog(null);
+          startNewGame();
+          refreshLeaderboard();
+          setActiveTab('LEADERBOARD');
+        },
+      });
+      return;
+    }
+    refreshLeaderboard();
+    setActiveTab('LEADERBOARD');
   };
 
   return (
@@ -2134,8 +2221,8 @@ export const App: React.FC = () => {
                     </table>
                   </aside>
 
-                  {/* ROW 2, COL 2: TIGHT 7x7 MATRIX */}
-                  <div className="board-grid-7x7">
+                  {/* ROW 2, COL 2: TIGHT 8x8 MATRIX */}
+                  <div className="board-grid-8x8">
                     {board.cells.map((cell, idx) => (
                       <div
                         key={idx}
@@ -2307,14 +2394,11 @@ export const App: React.FC = () => {
             progressNodeRef={progressNodeRef}
             onQuickToggleMode={handleQuickToggleMode}
             onOpenAuth={() => setIsAuthOpen(true)}
-            onOpenLeaderboard={() => {
-              refreshLeaderboard();
-              setActiveTab('LEADERBOARD');
-            }}
+            onOpenLeaderboard={handleRequestOpenLeaderboard}
             onOpenSettings={() => setIsBindingsOpen(true)}
             onOpenHelp={() => setIsWelcomeOpen(true)}
             onOpenReleaseNotes={() => setIsReleaseNotesOpen(true)}
-            onRestart={() => startNewGame()}
+            onRestart={requestRestartGame}
             scoreNodeRef={scoreNodeRef}
             lastDeltaBadgeRef={lastDeltaBadgeRef}
             deltaPopupRootRef={deltaPopupRootRef}
@@ -2351,6 +2435,46 @@ export const App: React.FC = () => {
         onSave={handleSaveSettings}
         onClose={() => setIsBindingsOpen(false)}
       />
+
+      {/* CONFIRMATION DIALOG FOR RESTART / MODE SWITCH / LEAVE DURING ACTIVE RUN */}
+      {confirmDialog && (
+        <div className="modal-backdrop" onClick={() => setConfirmDialog(null)}>
+          <div
+            className="modal-box badge-inspect-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>{confirmDialog.title}</h2>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setConfirmDialog(null)}
+              >
+                X
+              </button>
+            </div>
+            <div className="badge-inspect-body">
+              <p className="badge-inspect-desc">{confirmDialog.message}</p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-arcade"
+                onClick={() => setConfirmDialog(null)}
+              >
+                CANCEL [ESC]
+              </button>
+              <button
+                type="button"
+                className="btn-arcade gold"
+                onClick={confirmDialog.onConfirm}
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PILOT LOGIN / REGISTER / CLOUD SYNC & BADGES MODAL */}
       <AuthModal

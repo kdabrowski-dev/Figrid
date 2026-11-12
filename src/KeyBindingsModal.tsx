@@ -146,19 +146,14 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
           <div className="settings-section-title">
             NAVIGATION MODE{' '}
             {isModeLocked && (
-              <span className="mode-locked-note">(LOCKED DURING ACTIVE RUN - RESTART TO CHANGE)</span>
+              <span className="mode-locked-note">(SWITCHING MODE WILL ASK TO ABORT ACTIVE RUN)</span>
             )}
           </div>
           <div className="mode-toggle-grid three-cols">
             <button
               type="button"
-              disabled={isModeLocked}
-              className={`mode-card-btn ${draftMode === 'LINEAR' ? 'active' : ''} ${
-                isModeLocked ? 'disabled-locked' : ''
-              }`}
-              onClick={() => {
-                if (!isModeLocked) setDraftMode('LINEAR');
-              }}
+              className={`mode-card-btn ${draftMode === 'LINEAR' ? 'active' : ''}`}
+              onClick={() => setDraftMode('LINEAR')}
             >
               <span className="mode-card-name">LINEAR (LEFT TO RIGHT)</span>
               <span className="mode-card-desc">
@@ -167,13 +162,8 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             </button>
             <button
               type="button"
-              disabled={isModeLocked}
-              className={`mode-card-btn ${draftMode === 'OMNI' ? 'active' : ''} ${
-                isModeLocked ? 'disabled-locked' : ''
-              }`}
-              onClick={() => {
-                if (!isModeLocked) setDraftMode('OMNI');
-              }}
+              className={`mode-card-btn ${draftMode === 'OMNI' ? 'active' : ''}`}
+              onClick={() => setDraftMode('OMNI')}
             >
               <span className="mode-card-name">OMNI-8 (FREE DIRECTION + WRAP)</span>
               <span className="mode-card-desc">
@@ -183,17 +173,12 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             </button>
             <button
               type="button"
-              disabled={isModeLocked}
-              className={`mode-card-btn binary-card ${draftMode === 'BINARY' ? 'active' : ''} ${
-                isModeLocked ? 'disabled-locked' : ''
-              }`}
-              onClick={() => {
-                if (!isModeLocked) setDraftMode('BINARY');
-              }}
+              className={`mode-card-btn binary-card ${draftMode === 'BINARY' ? 'active' : ''}`}
+              onClick={() => setDraftMode('BINARY')}
             >
-              <span className="mode-card-name">BINARY (3-BIT DECODER 7x7)</span>
+              <span className="mode-card-name">BINARY (3-BIT DECODER 8x8)</span>
               <span className="mode-card-desc">
-                7x7 octal matrix (digits 0–7). Read decimal digits on the board and decode each tile
+                8x8 octal matrix (digits 0–7). Read decimal digits on the board and decode each tile
                 by typing its 3-bit binary sequence using keys [0] and [1]!
               </span>
             </button>

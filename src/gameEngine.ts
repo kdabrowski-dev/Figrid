@@ -9,10 +9,10 @@ export const OMNI_CENTER_INDEX = Math.floor(ROWS / 2) * COLS + Math.floor(COLS /
 export const SHIELD_REVEAL_DISTANCE = 7; // Linear mode: shield starts fading in 7 steps ahead
 export const OMNI_SHIELD_REVEAL_DISTANCE = 3; // Omni-8 mode: 2D plane radius halved (3 cells around head)
 
-export const BINARY_ROWS = 7;
-export const BINARY_COLS = 7;
-export const BINARY_TOTAL_CELLS = BINARY_ROWS * BINARY_COLS; // 49
-export const BINARY_SHIELD_COUNT = 8;
+export const BINARY_ROWS = 8;
+export const BINARY_COLS = 8;
+export const BINARY_TOTAL_CELLS = BINARY_ROWS * BINARY_COLS; // 64
+export const BINARY_SHIELD_COUNT = 10;
 export const BINARY_SHIELD_REVEAL_DISTANCE = 5;
 
 export const CURRENT_GAME_VERSION = '0.0.2';
