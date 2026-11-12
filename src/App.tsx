@@ -200,6 +200,7 @@ export const App: React.FC = () => {
   const progressNodeRef = useRef<HTMLSpanElement | null>(null);
   const boardWrapperRef = useRef<HTMLDivElement | null>(null);
   const badgeFadeTimeoutRef = useRef<number | null>(null);
+  const bonusPillLockUntilRef = useRef<number>(0);
 
   // Set of currently held physical key codes + keydown timestamp map for dwell time verification
   const pressedPhysicalKeysRef = useRef<Set<string>>(new Set());
@@ -225,9 +226,8 @@ export const App: React.FC = () => {
 
     // BINARY 3-bit mode state
     binaryBitCursor: 0,
-    binaryTileBitDeltas: [] as number[],
-    binaryRowBitDeltas: [] as number[],
-    binaryPrevDigit: null as number | null,
+    binaryTileFirstBitTs: 0,
+    binaryRowFirstBitTs: 0,
     binaryOverclocks: 0,
 
     // OMNI-8 mode state
@@ -577,7 +577,22 @@ export const App: React.FC = () => {
       }
 
       const badge = lastDeltaBadgeRef.current;
-      if (badge) {
+      const nowPerf = performance.now();
+      const isMajorBonus =
+        isSuperQuantum ||
+        Boolean(
+          extraTag &&
+            !extraTag.startsWith('[BIT ') &&
+            !extraTag.startsWith('[SPLIT') &&
+            extraTag !== 'MISS!' &&
+            extraTag !== 'BIT MISS!'
+        );
+      if (isMajorBonus) {
+        bonusPillLockUntilRef.current = nowPerf + (isSuperQuantum ? 1650 : 1200);
+      }
+      const shouldUpdateBadge = isMajorBonus || nowPerf >= bonusPillLockUntilRef.current;
+
+      if (badge && shouldUpdateBadge) {
         badge.textContent = fullText;
         badge.style.color = isPositive ? spectrumColor : '#ff2a54';
         badge.style.borderColor = isPositive ? spectrumColor : '#ff2a54';
@@ -652,10 +667,10 @@ export const App: React.FC = () => {
       eng.cellFirstHitTimestamps.fill(0);
 
       eng.binaryBitCursor = 0;
-      eng.binaryTileBitDeltas = [];
-      eng.binaryRowBitDeltas = [];
-      eng.binaryPrevDigit = null;
+      eng.binaryTileFirstBitTs = 0;
+      eng.binaryRowFirstBitTs = 0;
       eng.binaryOverclocks = 0;
+      bonusPillLockUntilRef.current = 0;
 
       eng.doneMask.fill(0);
       eng.clearedCount = 0;
@@ -1026,15 +1041,22 @@ export const App: React.FC = () => {
               ? 240
               : Math.max(15, now - eng.lastKeystrokeTime);
           const clampedDelta = Math.max(MIN_DELTA_MS, delta);
-          const bitSpeedBonus =
-            delta < MAX_BONUS_DELTA_MS ? Math.round(1400 / clampedDelta) : 0;
-          const bitBasePoints = 6;
+          const speedBonus =
+            delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
+
+          if (bitCursor === 0) {
+            eng.binaryTileFirstBitTs = now;
+            if (
+              idx % BINARY_COLS === 0 &&
+              (!currentCell.isReinforced || eng.shieldIntactOnCurrent)
+            ) {
+              eng.binaryRowFirstBitTs = now;
+            }
+          }
 
           eng.lastKeystrokeTime = now;
           eng.totalKeystrokes += 1;
           eng.sumDeltaMs += delta;
-          eng.binaryTileBitDeltas.push(delta);
-          eng.binaryRowBitDeltas.push(delta);
 
           const currentKps = 1000 / Math.max(40, delta);
           if (currentKps > eng.peakKps) {
@@ -1047,7 +1069,7 @@ export const App: React.FC = () => {
             eng.binaryBitCursor = nextBitCursor;
             setBinaryBitCursor(nextBitCursor);
 
-            const stepPoints = bitBasePoints + bitSpeedBonus;
+            const stepPoints = BASE_POINTS + speedBonus;
             eng.score += stepPoints;
 
             const intensity = computePointIntensity(stepPoints, clampedDelta);
@@ -1069,8 +1091,7 @@ export const App: React.FC = () => {
 
           if (currentCell.isReinforced && eng.shieldIntactOnCurrent) {
             eng.shieldIntactOnCurrent = false;
-            eng.binaryTileBitDeltas = [];
-            const shieldBreakPoints = bitBasePoints + bitSpeedBonus + 25;
+            const shieldBreakPoints = BASE_POINTS + speedBonus;
             eng.score += shieldBreakPoints;
 
             const intensity = computePointIntensity(shieldBreakPoints, clampedDelta);
@@ -1089,33 +1110,32 @@ export const App: React.FC = () => {
 
           const isSecondShieldHit = currentCell.isReinforced && !eng.shieldIntactOnCurrent;
           const multiplier = isSecondShieldHit ? 2 : 1;
-          let pointsGained = (bitBasePoints + bitSpeedBonus + 18) * multiplier;
+          let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
 
           if (isSecondShieldHit) {
             eng.reinforcedHit += 1;
             setReinforcedHitCount(eng.reinforcedHit);
           }
 
-          const tileDeltas = eng.binaryTileBitDeltas;
-          eng.binaryTileBitDeltas = [];
-          const avgTileBitDelta =
-            tileDeltas.reduce((a, b) => a + b, 0) / Math.max(1, tileDeltas.length);
+          const tileDurationMs = Math.max(1, now - eng.binaryTileFirstBitTs);
+          const avgTileBitDelta = tileDurationMs / 2.0;
 
           const overclockTags: string[] = [];
           let isSuperOverclock = false;
 
           // 1. PURE SIGNAL BURST (+220 pts): uniform 000 (0) or 111 (7) decoded at high speed
-          if ((targetDigit === 0 || targetDigit === 7) && avgTileBitDelta <= 160) {
+          if ((targetDigit === 0 || targetDigit === 7) && avgTileBitDelta <= 320) {
             pointsGained += 220;
             eng.binaryOverclocks += 1;
             overclockTags.push('PURE SIGNAL +220');
+            isSuperOverclock = true;
           }
 
           // 2. XOR-7 COMPLEMENT OVERCLOCK (+450 pts): consecutive tiles are bitwise NOT complements (prev ^ curr == 7)
           if (
-            eng.binaryPrevDigit !== null &&
-            (eng.binaryPrevDigit ^ targetDigit) === 7 &&
-            avgTileBitDelta <= 260
+            idx > 0 &&
+            (board.cells[idx - 1].digit ^ targetDigit) === 7 &&
+            avgTileBitDelta <= 420
           ) {
             pointsGained += 450;
             eng.binaryOverclocks += 1;
@@ -1123,15 +1143,10 @@ export const App: React.FC = () => {
             isSuperOverclock = true;
           }
 
-          eng.binaryPrevDigit = targetDigit;
-
           // 3. ROW REGISTER FLUSH (+650 pts): completing a 7-tile row register at high speed
-          if ((idx + 1) % BINARY_COLS === 0) {
-            const rowDeltas = eng.binaryRowBitDeltas;
-            eng.binaryRowBitDeltas = [];
-            const avgRowBitDelta =
-              rowDeltas.reduce((a, b) => a + b, 0) / Math.max(1, rowDeltas.length);
-            if (avgRowBitDelta <= 230) {
+          if (idx % BINARY_COLS === BINARY_COLS - 1) {
+            const rowAvgBitDelta = Math.max(1, now - eng.binaryRowFirstBitTs) / 20.0;
+            if (rowAvgBitDelta <= 380) {
               pointsGained += 650;
               eng.binaryOverclocks += 1;
               overclockTags.push('ROW REGISTER FLUSH +650');
@@ -2068,7 +2083,35 @@ export const App: React.FC = () => {
 
               {gameMode === 'BINARY' ? (
                 <div className="binary-stage-layout">
-                  {/* LEFT PANEL: COMPACT 0-7 BINARY REFERENCE TABLE */}
+                  {/* ROW 1, COL 1: SPACER ABOVE DECODER TABLE */}
+                  <div className="binary-grid-spacer" />
+
+                  {/* ROW 1, COL 2: COMPACT 3-BIT INPUT SLOTS ABOVE THE 7x7 MATRIX */}
+                  <div className="binary-bit-slots">
+                    {[0, 1, 2].map((slotIdx) => {
+                      const targetCell = board.cells[binaryActiveTargetIdx];
+                      const targetDigit = targetCell ? targetCell.digit : 0;
+                      const isFilled = slotIdx < binaryBitCursor;
+                      const isCurrentSlot = slotIdx === binaryBitCursor && !isFinished;
+                      const isErrorSlot = binaryBitErrorSlot === slotIdx;
+                      const filledBitVal = (targetDigit >> (2 - slotIdx)) & 1;
+
+                      return (
+                        <div
+                          key={slotIdx}
+                          className={`binary-bit-box ${isFilled ? 'filled' : ''} ${
+                            isCurrentSlot ? 'active-slot' : ''
+                          } ${isErrorSlot ? 'bit-error' : ''}`}
+                        >
+                          <span className="bit-slot-value">
+                            {isFilled ? filledBitVal : '_'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* ROW 2, COL 1: 0-7 BINARY REFERENCE TABLE (FLUSH TOP & BOTTOM WITH 7x7 MATRIX, NO ACTIVE HIGHLIGHT) */}
                   <aside className="binary-reference-panel">
                     <table className="binary-decoder-table">
                       <thead>
@@ -2080,16 +2123,8 @@ export const App: React.FC = () => {
                       <tbody>
                         {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => {
                           const bStr = d.toString(2).padStart(3, '0');
-                          const activeDigit =
-                            binaryActiveTargetIdx < BINARY_TOTAL_CELLS
-                              ? board.cells[binaryActiveTargetIdx]?.digit
-                              : -1;
-                          const isCurrentTargetDigit = activeDigit === d;
                           return (
-                            <tr
-                              key={d}
-                              className={isCurrentTargetDigit ? 'active-ref-row' : ''}
-                            >
+                            <tr key={d}>
                               <td className="ref-dec-col">{d}</td>
                               <td className="ref-bin-col">{bStr}</td>
                             </tr>
@@ -2099,59 +2134,33 @@ export const App: React.FC = () => {
                     </table>
                   </aside>
 
-                  {/* CENTER: COMPACT 3-BIT INPUT SLOTS + TIGHT 7x7 MATRIX */}
-                  <div className="binary-center-column">
-                    <div className="binary-bit-slots">
-                      {[0, 1, 2].map((slotIdx) => {
-                        const targetCell = board.cells[binaryActiveTargetIdx];
-                        const targetDigit = targetCell ? targetCell.digit : 0;
-                        const isFilled = slotIdx < binaryBitCursor;
-                        const isCurrentSlot = slotIdx === binaryBitCursor && !isFinished;
-                        const isErrorSlot = binaryBitErrorSlot === slotIdx;
-                        const filledBitVal = (targetDigit >> (2 - slotIdx)) & 1;
-
-                        return (
-                          <div
-                            key={slotIdx}
-                            className={`binary-bit-box ${isFilled ? 'filled' : ''} ${
-                              isCurrentSlot ? 'active-slot' : ''
-                            } ${isErrorSlot ? 'bit-error' : ''}`}
+                  {/* ROW 2, COL 2: TIGHT 7x7 MATRIX */}
+                  <div className="board-grid-7x7">
+                    {board.cells.map((cell, idx) => (
+                      <div
+                        key={idx}
+                        ref={(el) => {
+                          cellNodesRef.current[idx] = el;
+                        }}
+                        className="cell binary-cell"
+                      >
+                        {cell.isReinforced && (
+                          <svg
+                            className="cell-shield-svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
                           >
-                            <span className="bit-slot-value">
-                              {isFilled ? filledBitVal : '_'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="board-grid-7x7">
-                      {board.cells.map((cell, idx) => (
-                        <div
-                          key={idx}
-                          ref={(el) => {
-                            cellNodesRef.current[idx] = el;
-                          }}
-                          className="cell binary-cell"
-                        >
-                          {cell.isReinforced && (
-                            <svg
-                              className="cell-shield-svg"
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                            >
-                              <path
-                                className="shield-outline-path"
-                                d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                              />
-                            </svg>
-                          )}
-                          <span className="cell-digit">
-                            <FuturisticDigit digit={cell.digit} />
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                            <path
+                              className="shield-outline-path"
+                              d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                            />
+                          </svg>
+                        )}
+                        <span className="cell-digit">
+                          <FuturisticDigit digit={cell.digit} />
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (

@@ -2672,7 +2672,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .centered-score-digits-row {
@@ -2838,15 +2838,23 @@ body {
 }
 
 /* ============================================================================
-   BINARY MODE STAGE: COMPACT LEFT 0-7 DECODER TABLE + SMALL 3-BIT SLOTS + TIGHT 7x7 MATRIX
+   BINARY MODE STAGE: FLUSH LEFT 0-7 DECODER TABLE + SMALL 3-BIT SLOTS + TIGHT 7x7 MATRIX
    ============================================================================ */
 .binary-stage-layout {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  column-gap: 20px;
+  row-gap: 14px;
+  align-items: stretch;
   justify-content: center;
-  gap: 28px;
+  align-content: center;
   width: 100%;
   height: 670px;
+}
+
+.binary-grid-spacer {
+  width: 122px;
 }
 
 .binary-reference-panel {
@@ -2854,12 +2862,14 @@ body {
   border: 1.5px solid #232d46;
   padding: 8px 10px;
   width: 122px;
-  height: auto;
-  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .binary-decoder-table {
   width: 100%;
+  height: 100%;
   border-collapse: collapse;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
@@ -2869,13 +2879,13 @@ body {
   font-family: 'Press Start 2P', monospace;
   font-size: 7px;
   color: #64748b;
-  padding: 5px 4px;
+  padding: 4px;
   text-align: center;
   border-bottom: 1px solid #1e293b;
 }
 
 .binary-decoder-table td {
-  padding: 5px 6px;
+  padding: 0 6px;
   text-align: center;
   border-bottom: 1px solid rgba(30, 41, 59, 0.55);
   font-weight: 700;
@@ -2892,24 +2902,6 @@ body {
 .binary-decoder-table .ref-bin-col {
   color: #00f0ff;
   letter-spacing: 2px;
-}
-
-.binary-decoder-table tr.active-ref-row {
-  background: rgba(0, 255, 157, 0.16);
-  box-shadow: inset 0 0 8px rgba(0, 255, 157, 0.25);
-}
-
-.binary-decoder-table tr.active-ref-row .ref-dec-col,
-.binary-decoder-table tr.active-ref-row .ref-bin-col {
-  color: #ffea00;
-}
-
-.binary-center-column {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
 }
 
 .binary-bit-slots {
