@@ -11,7 +11,13 @@ import {
   apiFetchArchivePodium,
   UserProfile,
 } from './apiClient';
-import { UserBadge, BadgeList, BadgeInspectModal } from './BadgeIcons';
+import {
+  UserBadge,
+  BadgeList,
+  BadgeInspectModal,
+  PilotProfileModal,
+  PilotProfileSummary,
+} from './BadgeIcons';
 
 export interface LeaderboardEntry {
   id: string;
@@ -25,6 +31,7 @@ export interface LeaderboardEntry {
   mistakes: number;
   date: string;
   username?: string;
+  preferredMode?: GameMode;
   badges?: UserBadge[];
 }
 
@@ -173,6 +180,22 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const [serverMyRuns, setServerMyRuns] = useState<LeaderboardEntry[]>([]);
   const [archivePodiumEntries, setArchivePodiumEntries] = useState<LeaderboardEntry[]>([]);
   const [inspectedBadge, setInspectedBadge] = useState<UserBadge | null>(null);
+  const [inspectedPilot, setInspectedPilot] = useState<PilotProfileSummary | null>(null);
+
+  const handleOpenPilotProfile = (entry: LeaderboardEntry) => {
+    const isSelf =
+      currentUser &&
+      entry.username &&
+      entry.username.trim().toLowerCase() === currentUser.username.trim().toLowerCase();
+    setInspectedPilot({
+      nick: isSelf ? currentUser.nick : entry.nick,
+      username: entry.username,
+      preferredMode: isSelf
+        ? currentUser.preferredMode
+        : entry.preferredMode || entry.mode,
+      badges: isSelf ? currentUser.badges : entry.badges || [],
+    });
+  };
 
   useEffect(() => {
     setSelectedMode(defaultMode);
@@ -203,7 +226,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     () => getPersonalBestEntriesForMode(entries, 'OMNI'),
     [entries]
   );
-  const activeGlobalPBs = selectedMode === 'OMNI' ? globalOmniPBs : globalLinearPBs;
+  const globalBinaryPBs = useMemo(
+    () => getPersonalBestEntriesForMode(entries, 'BINARY'),
+    [entries]
+  );
+  const activeGlobalPBs =
+    selectedMode === 'OMNI'
+      ? globalOmniPBs
+      : selectedMode === 'BINARY'
+      ? globalBinaryPBs
+      : globalLinearPBs;
 
   // 2. MY HALL OF FAME (Filtered by strictly ONE selected version: 0.0.2 or 0.0.1)
   const allMyRunsForVersion = useMemo(() => {
@@ -262,7 +294,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     [allMyRunsForVersion]
   );
 
-  const activeMyRuns = selectedMode === 'OMNI' ? myOmniRuns : myLinearRuns;
+  const myBinaryRuns = useMemo(
+    () =>
+      allMyRunsForVersion
+        .filter((e) => e.mode === 'BINARY')
+        .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
+    [allMyRunsForVersion]
+  );
+
+  const activeMyRuns =
+    selectedMode === 'OMNI'
+      ? myOmniRuns
+      : selectedMode === 'BINARY'
+      ? myBinaryRuns
+      : myLinearRuns;
   const displayedEntries =
     boardScope === 'GLOBAL_PB' ? activeGlobalPBs : activeMyRuns;
 
@@ -298,6 +343,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       ? Math.min(...activeMyRuns.map((r) => r.avgSpeedMs))
       : null;
 
+  const modeDisplayName =
+    selectedMode === 'OMNI' ? 'OMNI-8' : selectedMode === 'BINARY' ? 'BINARY' : 'LINEAR';
+
   return (
     <section className="leaderboard-view">
       <div className="leaderboard-card">
@@ -305,16 +353,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div>
             <h2 className="leaderboard-title">
               {boardScope === 'ARCHIVE_PODIUM'
-                ? `ARCHIVE HALL OF FAME (v${archiveVersionFilter}) // ${
-                    selectedMode === 'OMNI' ? 'OMNI-8 PODIUM' : 'LINEAR PODIUM'
-                  }`
+                ? `ARCHIVE HALL OF FAME (v${archiveVersionFilter}) // ${modeDisplayName} PODIUM`
                 : boardScope === 'MY_HALL_OF_FAME'
-                ? `MY HALL OF FAME (v${personalVersionFilter}) // ${
-                    selectedMode === 'OMNI' ? 'OMNI-8 MODE' : 'LINEAR MODE'
-                  }`
-                : `HALL OF FAME v${CURRENT_GAME_VERSION} (PERSONAL BESTS) // ${
-                    selectedMode === 'OMNI' ? 'OMNI-8 MODE' : 'LINEAR MODE'
-                  }`}
+                ? `MY HALL OF FAME (v${personalVersionFilter}) // ${modeDisplayName} MODE`
+                : `HALL OF FAME v${CURRENT_GAME_VERSION} (PERSONAL BESTS) // ${modeDisplayName} MODE`}
             </h2>
             <p className="leaderboard-sub">
               {boardScope === 'ARCHIVE_PODIUM'
@@ -382,8 +424,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </button>
         </div>
 
-        {/* SEPARATE MODE RANKING TABS (LINEAR vs OMNI-8) */}
-        <div className="leaderboard-mode-tabs">
+        {/* SEPARATE MODE RANKING TABS (LINEAR vs OMNI-8 vs BINARY) */}
+        <div className="leaderboard-mode-tabs three-cols">
           <button
             type="button"
             className={`leaderboard-mode-tab linear ${
@@ -426,6 +468,28 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 : boardScope === 'MY_HALL_OF_FAME'
                 ? `${myOmniRuns.length} RUNS`
                 : `${globalOmniPBs.length} PILOTS`}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`leaderboard-mode-tab binary ${
+              selectedMode === 'BINARY' ? 'active' : ''
+            }`}
+            onClick={() => setSelectedMode('BINARY')}
+          >
+            <span className="lb-tab-title">
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? `v${archiveVersionFilter} BINARY TOP 5 PODIUM`
+                : boardScope === 'MY_HALL_OF_FAME'
+                ? `MY BINARY RUNS (v${personalVersionFilter})`
+                : 'BINARY RANKING'}
+            </span>
+            <span className="lb-tab-count">
+              {boardScope === 'ARCHIVE_PODIUM'
+                ? 'TOP 5'
+                : boardScope === 'MY_HALL_OF_FAME'
+                ? `${myBinaryRuns.length} RUNS`
+                : `${globalBinaryPBs.length} PILOTS`}
             </span>
           </button>
         </div>
@@ -472,7 +536,14 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     {entry ? (
                       <>
                         <div className="podium-nick-row">
-                          <span className="podium-nick">{entry.nick}</span>
+                          <button
+                            type="button"
+                            className="pilot-inspect-trigger podium-nick"
+                            title="Click to inspect Pilot Profile"
+                            onClick={() => handleOpenPilotProfile(entry)}
+                          >
+                            {entry.nick}
+                          </button>
                           <BadgeList
                             badges={entry.badges}
                             size={rank === 1 ? 24 : 20}
@@ -480,7 +551,14 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                           />
                         </div>
                         {entry.username && (
-                          <span className="podium-username">[{entry.username}]</span>
+                          <button
+                            type="button"
+                            className="pilot-inspect-trigger podium-username"
+                            title="Click to inspect Pilot Profile"
+                            onClick={() => handleOpenPilotProfile(entry)}
+                          >
+                            [{entry.username}]
+                          </button>
                         )}
                         <div className="podium-score-val">
                           {entry.score.toLocaleString('en-US')} <small>PTS</small>
@@ -599,12 +677,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     <tr>
                       <td colSpan={7} className="empty-row">
                         {boardScope === 'MY_HALL_OF_FAME'
-                          ? `NO PERSONAL RUNS RECORDED IN ${
-                              selectedMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'
-                            } MODE FOR v${personalVersionFilter}`
-                          : `NO SCORES RECORDED IN ${
-                              selectedMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'
-                            } MODE FOR v${CURRENT_GAME_VERSION} YET`}
+                          ? `NO PERSONAL RUNS RECORDED IN ${modeDisplayName} MODE FOR v${personalVersionFilter}`
+                          : `NO SCORES RECORDED IN ${modeDisplayName} MODE FOR v${CURRENT_GAME_VERSION} YET`}
                       </td>
                     </tr>
                   ) : (
@@ -631,15 +705,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                           </td>
                           <td className="col-nick">
                             <div className="col-nick-flex">
-                              <span>{entry.nick}</span>
-                              {entry.username && (
-                                <span
-                                  className="col-pilot-sub"
-                                  title={`Account: ${entry.username}`}
-                                >
-                                  [{entry.username}]
-                                </span>
-                              )}
+                              <button
+                                type="button"
+                                className="pilot-inspect-trigger"
+                                title="Click to inspect Pilot Profile & Badges"
+                                onClick={() => handleOpenPilotProfile(entry)}
+                              >
+                                <span>{entry.nick}</span>
+                                {entry.username && (
+                                  <span className="col-pilot-sub">
+                                    [{entry.username}]
+                                  </span>
+                                )}
+                              </button>
                               <BadgeList
                                 badges={entry.badges}
                                 size={20}
@@ -668,6 +746,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </>
         )}
       </div>
+
+      {/* CLICK-TO-INSPECT PILOT PROFILE MODAL */}
+      <PilotProfileModal
+        pilot={inspectedPilot}
+        onClose={() => setInspectedPilot(null)}
+        onInspectBadge={(b) => setInspectedBadge(b)}
+      />
 
       {/* CLICK-TO-INSPECT BADGE MODAL */}
       <BadgeInspectModal badge={inspectedBadge} onClose={() => setInspectedBadge(null)} />

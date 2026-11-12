@@ -3,8 +3,11 @@ import {
   ROWS,
   COLS,
   TOTAL_CELLS,
+  BINARY_COLS,
+  BINARY_TOTAL_CELLS,
   OMNI_CENTER_INDEX,
   SHIELD_REVEAL_DISTANCE,
+  BINARY_SHIELD_REVEAL_DISTANCE,
   OMNI_BRANCH_COLORS,
   CURRENT_GAME_VERSION,
   GameMode,
@@ -185,6 +188,9 @@ export const App: React.FC = () => {
   const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [wrapGhosts, setWrapGhosts] = useState<WrapGhostProjection[]>([]);
   const [quantumLasers, setQuantumLasers] = useState<QuantumLaserLine[]>([]);
+  const [binaryBitCursor, setBinaryBitCursor] = useState<number>(0);
+  const [binaryBitErrorSlot, setBinaryBitErrorSlot] = useState<number | null>(null);
+  const [binaryActiveTargetIdx, setBinaryActiveTargetIdx] = useState<number>(0);
 
   // Direct DOM references for O(1) zero-reflow updates across the 273 cells
   const cellNodesRef = useRef<(HTMLDivElement | null)[]>(new Array(TOTAL_CELLS).fill(null));
@@ -202,14 +208,27 @@ export const App: React.FC = () => {
   >(new Map());
   const telemetryEventsRef = useRef<KeystrokeTelemetryEvent[]>([]);
   const serverSessionTokenRef = useRef<string | null>(null);
+  const sessionPromiseRef = useRef<Promise<{
+    sessionToken: string;
+    mode: GameMode;
+    version: string;
+    board: GeneratedBoard;
+  } | null> | null>(null);
 
   // Real-time mutable game engine state (0ms input lag)
   const engineRef = useRef({
-    // LINEAR mode state
+    // LINEAR & BINARY mode state
     currentIndex: 0,
     shieldIntactOnCurrent: false,
     cellHitTimestamps: new Float64Array(TOTAL_CELLS),
     cellFirstHitTimestamps: new Float64Array(TOTAL_CELLS),
+
+    // BINARY 3-bit mode state
+    binaryBitCursor: 0,
+    binaryTileBitDeltas: [] as number[],
+    binaryRowBitDeltas: [] as number[],
+    binaryPrevDigit: null as number | null,
+    binaryOverclocks: 0,
 
     // OMNI-8 mode state
     doneMask: new Uint8Array(TOTAL_CELLS),
@@ -265,24 +284,17 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const applyUserProfileSettings = useCallback(
-    (user: UserProfile) => {
-      setCurrentUser(user);
-      if (user.nick && user.nick.length === 3) {
-        setNickLetters(user.nick.toUpperCase().split(''));
-      }
-      if (user.keyBindings && Object.keys(user.keyBindings).length > 0) {
-        const cleanBindings = sanitizeKeyBindings(user.keyBindings);
-        setBindings(cleanBindings);
-        saveKeyBindings(cleanBindings);
-      }
-      if (!hasStarted && (user.preferredMode === 'OMNI' || user.preferredMode === 'LINEAR')) {
-        setGameMode(user.preferredMode);
-        saveGameMode(user.preferredMode);
-      }
-    },
-    [hasStarted]
-  );
+  const applyUserProfileSettings = useCallback((user: UserProfile) => {
+    setCurrentUser(user);
+    if (user.nick && user.nick.length === 3) {
+      setNickLetters(user.nick.toUpperCase().split(''));
+    }
+    if (user.keyBindings && Object.keys(user.keyBindings).length > 0) {
+      const cleanBindings = sanitizeKeyBindings(user.keyBindings);
+      setBindings(cleanBindings);
+      saveKeyBindings(cleanBindings);
+    }
+  }, []);
 
   const refreshLeaderboard = useCallback(() => {
     fetchInitialLeaderboard().then(({ entries, isBackendOnline: online }) => {
@@ -291,7 +303,7 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Load initial leaderboard + restore JWT user session + start initial server game session
+  // Load initial leaderboard + restore JWT user session + register initial board session with server
   useEffect(() => {
     refreshLeaderboard();
     apiFetchCurrentUser().then((user) => {
@@ -299,13 +311,15 @@ export const App: React.FC = () => {
         applyUserProfileSettings(user);
       }
     });
-    apiStartGameSession(loadGameMode()).then((session) => {
+    const initPromise = apiStartGameSession(gameMode, board).then((session) => {
       if (session && engineRef.current.totalKeystrokes === 0 && !engineRef.current.isFinished) {
         serverSessionTokenRef.current = session.sessionToken;
-        setBoard(session.board);
       }
+      return session;
     });
-  }, [refreshLeaderboard, applyUserProfileSettings]);
+    sessionPromiseRef.current = initPromise;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Reverse key -> digit lookup map for O(1) keydown checks
   const keyToDigitMapRef = useRef<Map<string, number>>(new Map());
@@ -379,14 +393,17 @@ export const App: React.FC = () => {
   );
 
   const updateLinearShieldVisibility = useCallback(
-    (newCurrentIndex: number, currentBoard: GeneratedBoard) => {
-      const maxIdx = Math.min(TOTAL_CELLS - 1, newCurrentIndex + SHIELD_REVEAL_DISTANCE);
+    (newCurrentIndex: number, currentBoard: GeneratedBoard, mode: GameMode = 'LINEAR') => {
+      const totalCells = mode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
+      const revealDist =
+        mode === 'BINARY' ? BINARY_SHIELD_REVEAL_DISTANCE : SHIELD_REVEAL_DISTANCE;
+      const maxIdx = Math.min(totalCells - 1, newCurrentIndex + revealDist);
       for (let i = newCurrentIndex; i <= maxIdx; i++) {
         const cell = currentBoard.cells[i];
-        if (!cell.isReinforced) continue;
+        if (!cell || !cell.isReinforced) continue;
         const node = cellNodesRef.current[i];
         if (!node) continue;
-        const alpha = getShieldProximityAlpha(i, newCurrentIndex);
+        const alpha = getShieldProximityAlpha(i, newCurrentIndex, revealDist);
         node.style.setProperty('--shield-alpha', String(alpha));
         if (i === newCurrentIndex) {
           node.classList.remove('shield-approaching');
@@ -610,12 +627,12 @@ export const App: React.FC = () => {
     []
   );
 
-  // Start / Restart Game (Fetches a fresh server-authoritative board session in parallel)
+  // Start / Restart Game (Registers the newly generated board with the server in parallel)
   const startNewGame = useCallback(
     (overrideMode?: GameMode) => {
       const targetMode = overrideMode ?? gameMode;
-      const fallbackBoard = generateFairBoard(targetMode);
-      setBoard(fallbackBoard);
+      const newBoard = generateFairBoard(targetMode);
+      setBoard(newBoard);
       pressedPhysicalKeysRef.current.clear();
       activeKeyDownEventMapRef.current.clear();
       telemetryEventsRef.current = [];
@@ -628,9 +645,15 @@ export const App: React.FC = () => {
       eng.lastKeystrokeTime = 0;
       eng.score = 0;
       eng.displayedScore = 0;
-      eng.shieldIntactOnCurrent = fallbackBoard.cells[0].isReinforced;
+      eng.shieldIntactOnCurrent = newBoard.cells[0].isReinforced;
       eng.cellHitTimestamps.fill(0);
       eng.cellFirstHitTimestamps.fill(0);
+
+      eng.binaryBitCursor = 0;
+      eng.binaryTileBitDeltas = [];
+      eng.binaryRowBitDeltas = [];
+      eng.binaryPrevDigit = null;
+      eng.binaryOverclocks = 0;
 
       eng.doneMask.fill(0);
       eng.clearedCount = 0;
@@ -661,6 +684,9 @@ export const App: React.FC = () => {
       setUnlockedBadgesOnRun([]);
       setNickCursor(0);
       setQuantumLasers([]);
+      setBinaryBitCursor(0);
+      setBinaryBitErrorSlot(null);
+      setBinaryActiveTargetIdx(0);
       setChartTick((t) => t + 1);
 
       if (scoreNodeRef.current) {
@@ -674,18 +700,19 @@ export const App: React.FC = () => {
           'super-quantum-pill'
         );
       }
+      const modeTotalCells = targetMode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
       if (progressNodeRef.current) {
-        progressNodeRef.current.textContent = `0 / ${TOTAL_CELLS}`;
+        progressNodeRef.current.textContent = `0 / ${modeTotalCells}`;
       }
 
-      // Request server-authoritative session & board
-      apiStartGameSession(targetMode).then((session) => {
-        if (session && engineRef.current.totalKeystrokes === 0 && !engineRef.current.isFinished) {
+      // Register client board with server-authoritative session (zero board swap / flicker!)
+      const startPromise = apiStartGameSession(targetMode, newBoard).then((session) => {
+        if (session && !engineRef.current.isFinished) {
           serverSessionTokenRef.current = session.sessionToken;
-          setBoard(session.board);
-          engineRef.current.shieldIntactOnCurrent = session.board.cells[0].isReinforced;
         }
+        return session;
       });
+      sessionPromiseRef.current = startPromise;
     },
     [gameMode]
   );
@@ -697,6 +724,7 @@ export const App: React.FC = () => {
     eng.doneMask.fill(0);
     eng.omniVisualCells.clear();
 
+    const modeTotalCells = gameMode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const node = cellNodesRef.current[i];
       if (!node) continue;
@@ -711,16 +739,20 @@ export const App: React.FC = () => {
       scoreNodeRef.current.textContent = eng.displayedScore.toLocaleString('en-US');
     }
 
-    if (gameMode === 'LINEAR') {
+    if (gameMode === 'LINEAR' || gameMode === 'BINARY') {
       eng.currentIndex = 0;
-      eng.shieldIntactOnCurrent = board.cells[0].isReinforced;
+      eng.shieldIntactOnCurrent = Boolean(board.cells[0]?.isReinforced);
+      eng.binaryBitCursor = 0;
+      setBinaryBitCursor(0);
+      setBinaryBitErrorSlot(null);
+      setBinaryActiveTargetIdx(0);
       const firstNode = cellNodesRef.current[0];
       if (firstNode) firstNode.classList.add('linear-target');
       setWrapGhosts([]);
       if (progressNodeRef.current) {
-        progressNodeRef.current.textContent = `0 / ${TOTAL_CELLS}`;
+        progressNodeRef.current.textContent = `0 / ${modeTotalCells}`;
       }
-      updateLinearShieldVisibility(0, board);
+      updateLinearShieldVisibility(0, board, gameMode);
     } else {
       const startIdx = OMNI_CENTER_INDEX;
       eng.doneMask.fill(0);
@@ -731,7 +763,7 @@ export const App: React.FC = () => {
           headIndex: startIdx,
           trail: [startIdx],
           visitedSet: new Set([startIdx]),
-          shieldCrackedOnHead: !board.cells[startIdx].isReinforced,
+          shieldCrackedOnHead: !board.cells[startIdx]?.isReinforced,
           color: OMNI_BRANCH_COLORS[0],
         },
       ];
@@ -763,6 +795,17 @@ export const App: React.FC = () => {
       apiUpdateUserSettings({ nick }).then((updatedUser) => {
         if (updatedUser) setCurrentUser(updatedUser);
       });
+    }
+
+    if (!serverSessionTokenRef.current && sessionPromiseRef.current) {
+      try {
+        const pendingSession = await sessionPromiseRef.current;
+        if (pendingSession) {
+          serverSessionTokenRef.current = pendingSession.sessionToken;
+        }
+      } catch {
+        // ignore
+      }
     }
 
     const verifyRes = await apiFinishGameSession({
@@ -936,6 +979,7 @@ export const App: React.FC = () => {
       }
 
       if (mappedDigit === undefined) return;
+      if (gameMode === 'BINARY' && mappedDigit !== 0 && mappedDigit !== 1) return;
 
       const eng = engineRef.current;
       if (eng.isFinished) return;
@@ -943,10 +987,11 @@ export const App: React.FC = () => {
       const now = Math.round(performance.now() * 100) / 100;
 
       // Record keystroke telemetry event for server-side replay & anti-bot sentinel
+      // Initialize downUpDurationMs to -1 until keyup fires so un-released keys never fake constant dwell time
       const telemetryEv: KeystrokeTelemetryEvent = {
         digit: mappedDigit,
         clientTs: now,
-        downUpDurationMs: 42,
+        downUpDurationMs: -1,
         isTrusted: Boolean(e.isTrusted),
         physKeyCode: physCode,
       };
@@ -955,6 +1000,243 @@ export const App: React.FC = () => {
         eventRef: telemetryEv,
         downTime: now,
       });
+
+      // ======================================================================
+      // MODE C: BINARY (7x4 Matrix, Digits 0-7, 3-Bit Binary Input [4][2][1])
+      // ======================================================================
+      if (gameMode === 'BINARY') {
+        const idx = eng.currentIndex;
+        const currentCell = board.cells[idx];
+        const currentNode = cellNodesRef.current[idx];
+        if (!currentCell) return;
+
+        const targetDigit = currentCell.digit;
+        const bitCursor = eng.binaryBitCursor;
+        const expectedBit = (targetDigit >> (2 - bitCursor)) & 1;
+
+        if (mappedDigit === expectedBit) {
+          if (eng.runStartTime === 0) eng.runStartTime = now;
+          setHasStarted(true);
+          setBinaryBitErrorSlot(null);
+
+          const delta =
+            eng.lastKeystrokeTime === 0
+              ? 240
+              : Math.max(15, now - eng.lastKeystrokeTime);
+          const clampedDelta = Math.max(MIN_DELTA_MS, delta);
+          const bitSpeedBonus =
+            delta < MAX_BONUS_DELTA_MS ? Math.round(1400 / clampedDelta) : 0;
+          const bitBasePoints = 6;
+
+          eng.lastKeystrokeTime = now;
+          eng.totalKeystrokes += 1;
+          eng.sumDeltaMs += delta;
+          eng.binaryTileBitDeltas.push(delta);
+          eng.binaryRowBitDeltas.push(delta);
+
+          const currentKps = 1000 / Math.max(40, delta);
+          if (currentKps > eng.peakKps) {
+            eng.peakKps = currentKps;
+            setPeakKps(currentKps);
+          }
+
+          if (bitCursor < 2) {
+            const nextBitCursor = bitCursor + 1;
+            eng.binaryBitCursor = nextBitCursor;
+            setBinaryBitCursor(nextBitCursor);
+
+            const stepPoints = bitBasePoints + bitSpeedBonus;
+            eng.score += stepPoints;
+
+            const intensity = computePointIntensity(stepPoints, clampedDelta);
+            const specColor = getSpectrumColor(intensity);
+            if (scoreNodeRef.current) {
+              scoreNodeRef.current.style.color = specColor;
+            }
+            triggerDeltaPopup(stepPoints, specColor, `[BIT ${nextBitCursor}/3]`);
+
+            const roundedDelta = Math.round(delta);
+            setLastSpeedMs(roundedDelta);
+            setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+            return;
+          }
+
+          // All 3 bits (MSB -> LSB) of the current tile have been decoded!
+          eng.binaryBitCursor = 0;
+          setBinaryBitCursor(0);
+
+          if (currentCell.isReinforced && eng.shieldIntactOnCurrent) {
+            eng.shieldIntactOnCurrent = false;
+            eng.binaryTileBitDeltas = [];
+            const shieldBreakPoints = bitBasePoints + bitSpeedBonus + 25;
+            eng.score += shieldBreakPoints;
+
+            const intensity = computePointIntensity(shieldBreakPoints, clampedDelta);
+            const specColor = getSpectrumColor(intensity);
+            if (currentNode) {
+              currentNode.classList.remove('shield-approaching', 'error');
+              currentNode.style.setProperty('--shield-alpha', '1');
+              currentNode.classList.add('shield-cracked');
+            }
+            triggerDeltaPopup(shieldBreakPoints, specColor, '[3-BIT SHIELD CRACKED!]');
+            const roundedDelta = Math.round(delta);
+            setLastSpeedMs(roundedDelta);
+            setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+            return;
+          }
+
+          const isSecondShieldHit = currentCell.isReinforced && !eng.shieldIntactOnCurrent;
+          const multiplier = isSecondShieldHit ? 2 : 1;
+          let pointsGained = (bitBasePoints + bitSpeedBonus + 18) * multiplier;
+
+          if (isSecondShieldHit) {
+            eng.reinforcedHit += 1;
+            setReinforcedHitCount(eng.reinforcedHit);
+          }
+
+          const tileDeltas = eng.binaryTileBitDeltas;
+          eng.binaryTileBitDeltas = [];
+          const avgTileBitDelta =
+            tileDeltas.reduce((a, b) => a + b, 0) / Math.max(1, tileDeltas.length);
+
+          const overclockTags: string[] = [];
+          let isSuperOverclock = false;
+
+          // 1. PURE SIGNAL BURST (+220 pts): uniform 000 (0) or 111 (7) decoded at high speed
+          if ((targetDigit === 0 || targetDigit === 7) && avgTileBitDelta <= 160) {
+            pointsGained += 220;
+            eng.binaryOverclocks += 1;
+            overclockTags.push('PURE SIGNAL +220');
+          }
+
+          // 2. XOR-7 COMPLEMENT OVERCLOCK (+450 pts): consecutive tiles are bitwise NOT complements (prev ^ curr == 7)
+          if (
+            eng.binaryPrevDigit !== null &&
+            (eng.binaryPrevDigit ^ targetDigit) === 7 &&
+            avgTileBitDelta <= 260
+          ) {
+            pointsGained += 450;
+            eng.binaryOverclocks += 1;
+            overclockTags.push('XOR-7 COMPLEMENT +450');
+            isSuperOverclock = true;
+          }
+
+          eng.binaryPrevDigit = targetDigit;
+
+          // 3. ROW REGISTER FLUSH (+650 pts): completing a 7-tile row register at high speed
+          if ((idx + 1) % BINARY_COLS === 0) {
+            const rowDeltas = eng.binaryRowBitDeltas;
+            eng.binaryRowBitDeltas = [];
+            const avgRowBitDelta =
+              rowDeltas.reduce((a, b) => a + b, 0) / Math.max(1, rowDeltas.length);
+            if (avgRowBitDelta <= 230) {
+              pointsGained += 650;
+              eng.binaryOverclocks += 1;
+              overclockTags.push('ROW REGISTER FLUSH +650');
+              isSuperOverclock = true;
+            }
+          }
+
+          setSequencesHitCount(eng.binaryOverclocks);
+          eng.score += pointsGained;
+
+          const intensity = computePointIntensity(pointsGained, clampedDelta);
+          const specColor = isSuperOverclock ? '#00ff9d' : getSpectrumColor(intensity);
+          if (scoreNodeRef.current) {
+            scoreNodeRef.current.style.color = specColor;
+          }
+
+          let tag = '';
+          if (overclockTags.length > 0) {
+            tag = `[${overclockTags.join(' // ')}]`;
+          } else if (isSecondShieldHit) {
+            tag = '[SHIELD 2X!]';
+          }
+
+          triggerDeltaPopup(pointsGained, specColor, tag || undefined, isSuperOverclock);
+
+          if (currentNode) {
+            currentNode.classList.remove(
+              'active',
+              'linear-target',
+              'error',
+              'shield-cracked',
+              'shield-approaching'
+            );
+            currentNode.style.setProperty('--shield-alpha', '0');
+            currentNode.classList.add('done');
+          }
+
+          const nextIndex = idx + 1;
+          eng.currentIndex = nextIndex;
+          setBinaryActiveTargetIdx(nextIndex);
+
+          if (progressNodeRef.current) {
+            progressNodeRef.current.textContent = `${nextIndex} / ${BINARY_TOTAL_CELLS}`;
+          }
+
+          if (nextIndex < BINARY_TOTAL_CELLS) {
+            const nextCell = board.cells[nextIndex];
+            eng.shieldIntactOnCurrent = nextCell.isReinforced;
+            const nextNode = cellNodesRef.current[nextIndex];
+            if (nextNode) {
+              nextNode.classList.remove('shield-approaching');
+              nextNode.classList.add('linear-target');
+            }
+            updateLinearShieldVisibility(nextIndex, board, 'BINARY');
+          } else {
+            eng.runEndTime = now;
+            eng.isFinished = true;
+            setIsFinished(true);
+          }
+
+          const roundedDelta = Math.round(delta);
+          samplesRef.current.push({
+            step: nextIndex,
+            deltaMs: roundedDelta,
+            kps: Number(currentKps.toFixed(2)),
+            points: pointsGained,
+            isReinforced2x: isSecondShieldHit,
+            sequenceName: overclockTags.length > 0 ? overclockTags[0] : undefined,
+          });
+
+          setLastSpeedMs(roundedDelta);
+          setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+          setChartTick((t) => t + 1);
+          return;
+        } else {
+          // Bit mistake in BINARY mode: do NOT clear already-entered bits in the 3-bit register!
+          const errDelta =
+            eng.lastKeystrokeTime === 0
+              ? MAX_BONUS_DELTA_MS
+              : Math.max(MIN_DELTA_MS, now - eng.lastKeystrokeTime);
+          const speedPenaltyFactor = Math.round(3200 / errDelta);
+          const penalty = Math.round(BASE_POINTS * 2 + speedPenaltyFactor * 2.2);
+
+          eng.score = Math.max(0, eng.score - penalty);
+          eng.lastKeystrokeTime = now;
+          eng.mistakes += 1;
+          setMistakesCount(eng.mistakes);
+          setBinaryBitErrorSlot(bitCursor);
+
+          triggerBoardErrorFlash();
+          if (currentNode) {
+            currentNode.classList.remove('error');
+            void currentNode.offsetWidth;
+            currentNode.classList.add('error');
+            currentNode.addEventListener(
+              'animationend',
+              () => {
+                currentNode.classList.remove('error');
+              },
+              { once: true }
+            );
+          }
+
+          triggerDeltaPopup(-penalty, '#ff2a54', 'BIT MISS!');
+          return;
+        }
+      }
 
       // ======================================================================
       // MODE A: OMNI-8 (v0.0.2: No Sequences, Path-Length Quantum Bonus + Penta/Hexa/Hepta/Octa)
@@ -1652,17 +1934,14 @@ export const App: React.FC = () => {
     const cleanBindings = sanitizeKeyBindings(newBindings);
     setBindings(cleanBindings);
     saveKeyBindings(cleanBindings);
-    let modeToSave = gameMode;
     if (!hasStarted && newMode !== gameMode) {
       setGameMode(newMode);
       saveGameMode(newMode);
-      modeToSave = newMode;
       startNewGame(newMode);
     }
     if (currentUser) {
       apiUpdateUserSettings({
         keyBindings: cleanBindings,
-        preferredMode: modeToSave,
       }).then((updatedUser) => {
         if (updatedUser) setCurrentUser(updatedUser);
       });
@@ -1671,15 +1950,11 @@ export const App: React.FC = () => {
 
   const handleQuickToggleMode = () => {
     if (hasStarted) return;
-    const nextMode: GameMode = gameMode === 'LINEAR' ? 'OMNI' : 'LINEAR';
+    const nextMode: GameMode =
+      gameMode === 'LINEAR' ? 'OMNI' : gameMode === 'OMNI' ? 'BINARY' : 'LINEAR';
     setGameMode(nextMode);
     saveGameMode(nextMode);
     startNewGame(nextMode);
-    if (currentUser) {
-      apiUpdateUserSettings({ preferredMode: nextMode }).then((updatedUser) => {
-        if (updatedUser) setCurrentUser(updatedUser);
-      });
-    }
   };
 
   return (
@@ -1789,33 +2064,151 @@ export const App: React.FC = () => {
                   </div>
                 ))}
 
-              <div className="board-grid-21x13">
-                {board.cells.map((cell, idx) => (
-                  <div
-                    key={idx}
-                    ref={(el) => {
-                      cellNodesRef.current[idx] = el;
-                    }}
-                    className="cell"
-                  >
-                    {cell.isReinforced && (
-                      <svg
-                        className="cell-shield-svg"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                      >
-                        <path
-                          className="shield-outline-path"
-                          d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                        />
-                      </svg>
-                    )}
-                    <span className="cell-digit">
-                      <FuturisticDigit digit={cell.digit} />
-                    </span>
+              {gameMode === 'BINARY' ? (
+                <div className="binary-stage-layout">
+                  {/* LEFT PANEL: 0-7 BINARY REFERENCE TABLE & OVERCLOCK BONUSES */}
+                  <aside className="binary-reference-panel">
+                    <div className="binary-ref-header">3-BIT OCTAL DECODER</div>
+                    <table className="binary-decoder-table">
+                      <thead>
+                        <tr>
+                          <th>DEC</th>
+                          <th>BIN (4-2-1)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => {
+                          const bStr = d.toString(2).padStart(3, '0');
+                          const activeDigit =
+                            binaryActiveTargetIdx < BINARY_TOTAL_CELLS
+                              ? board.cells[binaryActiveTargetIdx]?.digit
+                              : -1;
+                          const isCurrentTargetDigit = activeDigit === d;
+                          return (
+                            <tr
+                              key={d}
+                              className={isCurrentTargetDigit ? 'active-ref-row' : ''}
+                            >
+                              <td className="ref-dec-col">{d}</td>
+                              <td className="ref-bin-col">{bStr}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div className="binary-overclock-legend">
+                      <div className="binary-legend-title">OVERCLOCK BONUSES</div>
+                      <div className="binary-legend-item">
+                        <strong>PURE SIGNAL (+220)</strong>
+                        <span>Fast 0 (000) or 7 (111)</span>
+                      </div>
+                      <div className="binary-legend-item">
+                        <strong>XOR-7 COMPLEMENT (+450)</strong>
+                        <span>Bitwise NOT pair (e.g. 2&rarr;5, 1&rarr;6)</span>
+                      </div>
+                      <div className="binary-legend-item">
+                        <strong>ROW FLUSH (+650)</strong>
+                        <span>Fast 7-tile row clear</span>
+                      </div>
+                    </div>
+                  </aside>
+
+                  {/* CENTER: TOP 3-BIT INPUT REGISTER + 7x4 MATRIX */}
+                  <div className="binary-center-column">
+                    <div className="binary-input-register">
+                      <div className="binary-register-header">
+                        <span className="binary-register-title">
+                          ACTIVE 3-BIT INPUT REGISTER // TARGET TILE #{Math.min(binaryActiveTargetIdx + 1, BINARY_TOTAL_CELLS)}
+                        </span>
+                        <span className="binary-register-sub">
+                          TYPE [0] OR [1] (WRONG BIT DOES NOT RESET REGISTER)
+                        </span>
+                      </div>
+                      <div className="binary-bit-slots">
+                        {[0, 1, 2].map((slotIdx) => {
+                          const bitWeight = slotIdx === 0 ? 4 : slotIdx === 1 ? 2 : 1;
+                          const targetCell = board.cells[binaryActiveTargetIdx];
+                          const targetDigit = targetCell ? targetCell.digit : 0;
+                          const isFilled = slotIdx < binaryBitCursor;
+                          const isCurrentSlot = slotIdx === binaryBitCursor && !isFinished;
+                          const isErrorSlot = binaryBitErrorSlot === slotIdx;
+                          const filledBitVal = (targetDigit >> (2 - slotIdx)) & 1;
+
+                          return (
+                            <div
+                              key={slotIdx}
+                              className={`binary-bit-box ${isFilled ? 'filled' : ''} ${
+                                isCurrentSlot ? 'active-slot' : ''
+                              } ${isErrorSlot ? 'bit-error' : ''}`}
+                            >
+                              <span className="bit-weight-label">BIT {bitWeight}</span>
+                              <span className="bit-slot-value">
+                                {isFilled ? filledBitVal : '_'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="board-grid-7x4">
+                      {board.cells.map((cell, idx) => (
+                        <div
+                          key={idx}
+                          ref={(el) => {
+                            cellNodesRef.current[idx] = el;
+                          }}
+                          className="cell binary-cell"
+                        >
+                          {cell.isReinforced && (
+                            <svg
+                              className="cell-shield-svg"
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                            >
+                              <path
+                                className="shield-outline-path"
+                                d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                              />
+                            </svg>
+                          )}
+                          <span className="cell-digit">
+                            <FuturisticDigit digit={cell.digit} />
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div className="board-grid-21x13">
+                  {board.cells.map((cell, idx) => (
+                    <div
+                      key={idx}
+                      ref={(el) => {
+                        cellNodesRef.current[idx] = el;
+                      }}
+                      className="cell"
+                    >
+                      {cell.isReinforced && (
+                        <svg
+                          className="cell-shield-svg"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            className="shield-outline-path"
+                            d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                          />
+                        </svg>
+                      )}
+                      <span className="cell-digit">
+                        <FuturisticDigit digit={cell.digit} />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {isFinished && (
@@ -1835,6 +2228,8 @@ export const App: React.FC = () => {
                     | Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} |{' '}
                     {gameMode === 'OMNI'
                       ? `Quantum Merges: ${quantumMergesCount}`
+                      : gameMode === 'BINARY'
+                      ? `Overclock Bonuses: ${sequencesHitCount}`
                       : `Secret Sequences: ${sequencesHitCount}/${board.sequences.length}`}
                   </p>
 

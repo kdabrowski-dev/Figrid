@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameMode, KeyBindingsMap } from './gameEngine';
 import {
   apiLogin,
   apiRegister,
+  apiUpdateUserSettings,
   setStoredToken,
   UserProfile,
 } from './apiClient';
-import { UserBadge, BadgeIcon, BadgeInspectModal } from './BadgeIcons';
+import { UserBadge, BadgeList, BadgeInspectModal } from './BadgeIcons';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface AuthModalProps {
   currentMode: GameMode;
   currentNick: string;
   onAuthSuccess: (user: UserProfile) => void;
+  onProfileUpdate?: (user: UserProfile) => void;
   onLogout: () => void;
   onClose: () => void;
 }
@@ -26,6 +28,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   currentMode,
   currentNick,
   onAuthSuccess,
+  onProfileUpdate,
   onLogout,
   onClose,
 }) => {
@@ -33,11 +36,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [nick, setNick] = useState(currentNick || 'AAA');
+  const [profileNick, setProfileNick] = useState(currentUser?.nick || currentNick || 'AAA');
+  const [profileFavMode, setProfileFavMode] = useState<GameMode>(
+    currentUser?.preferredMode || 'LINEAR'
+  );
+  const [profileSaveMsg, setProfileSaveMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [inspectedBadge, setInspectedBadge] = useState<UserBadge | null>(null);
 
+  useEffect(() => {
+    if (isOpen && currentUser) {
+      setProfileNick(currentUser.nick || 'AAA');
+      setProfileFavMode(currentUser.preferredMode || 'LINEAR');
+      setProfileSaveMsg(null);
+    }
+  }, [isOpen, currentUser]);
+
   if (!isOpen) return null;
+
+  const handleSaveProfileParams = async () => {
+    if (!currentUser) return;
+    const cleanNick = profileNick
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 3)
+      .padEnd(3, 'A');
+    setProfileNick(cleanNick);
+    setIsLoading(true);
+    setProfileSaveMsg(null);
+    try {
+      const updated = await apiUpdateUserSettings({
+        nick: cleanNick,
+        preferredMode: profileFavMode,
+      });
+      if (updated) {
+        if (onProfileUpdate) {
+          onProfileUpdate(updated);
+        } else {
+          onAuthSuccess(updated);
+        }
+        setProfileSaveMsg('PROFILE SAVED');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,32 +133,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <span className="hud-label">LOGGED IN AS</span>
               <strong className="auth-username">{currentUser.username}</strong>
             </div>
+
             <div className="auth-profile-row">
-              <span className="hud-label">DEFAULT 3-LETTER TAG</span>
-              <strong className="auth-nick-badge">{currentUser.nick}</strong>
-            </div>
-            <div className="auth-profile-row">
-              <span className="hud-label">PREFERRED MODE</span>
-              <strong>{currentUser.preferredMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}</strong>
+              <span className="hud-label">3-LETTER TAG</span>
+              <input
+                type="text"
+                className="auth-input auth-nick-input profile-inline-nick-input"
+                value={profileNick}
+                onChange={(e) => {
+                  setProfileSaveMsg(null);
+                  setProfileNick(
+                    e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3)
+                  );
+                }}
+                maxLength={3}
+              />
             </div>
 
-            {/* PILOT COLLECTED BADGES SHOWCASE (CLICK ANY BADGE TO INSPECT) */}
+            <div className="auth-profile-row">
+              <span className="hud-label">FAVORITE MODE</span>
+              <div className="profile-fav-mode-pills">
+                {(['LINEAR', 'OMNI', 'BINARY'] as GameMode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`version-pill-btn ${profileFavMode === m ? 'active' : ''}`}
+                    onClick={() => {
+                      setProfileSaveMsg(null);
+                      setProfileFavMode(m);
+                    }}
+                  >
+                    {m === 'OMNI' ? 'OMNI-8' : m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* PILOT COLLECTED BADGES SHOWCASE (COMPACT CLICKABLE ICONS WITHOUT TILES OR LABELS) */}
             <div className="profile-badges-section">
               <span className="hud-label">EARNED PILOT BADGES (CLICK TO INSPECT)</span>
               {currentUser.badges && currentUser.badges.length > 0 ? (
-                <div className="profile-badges-grid">
-                  {currentUser.badges.map((b) => (
-                    <button
-                      key={b.code}
-                      type="button"
-                      className="profile-badge-tile"
-                      onClick={() => setInspectedBadge(b)}
-                      title={`${b.title} - Click for details`}
-                    >
-                      <BadgeIcon code={b.code} size={38} />
-                      <span className="profile-badge-name">{b.title}</span>
-                    </button>
-                  ))}
+                <div className="profile-badges-inline-strip">
+                  <BadgeList
+                    badges={currentUser.badges}
+                    size={28}
+                    onInspectBadge={(b) => setInspectedBadge(b)}
+                  />
                 </div>
               ) : (
                 <div className="profile-no-badges">
@@ -123,9 +187,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               )}
             </div>
 
+            {profileSaveMsg && (
+              <div className="profile-save-status highlight-cyan">{profileSaveMsg}</div>
+            )}
+
             <p className="modal-desc">
-              Your keybindings, preferred mode, earned badges, and 3-letter tag are synced with the
-              PostgreSQL backend.
+              Your 3-letter tag, favorite mode badge, keybindings, and earned honors are displayed
+              on your Pilot Dossier across the Leaderboard.
             </p>
             <div className="modal-footer">
               <button
@@ -138,6 +206,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 }}
               >
                 LOG OUT
+              </button>
+              <button
+                type="button"
+                className="btn-arcade gold"
+                disabled={isLoading}
+                onClick={handleSaveProfileParams}
+              >
+                {isLoading ? 'SAVING...' : 'SAVE PROFILE'}
               </button>
               <button type="button" className="btn-arcade cyan" onClick={onClose}>
                 CLOSE

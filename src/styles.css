@@ -2653,3 +2653,435 @@ body {
 .rn-pedestal.p5 .rn-ped-bar {
   height: 22px;
 }
+
+/* ============================================================================
+   CENTERED SCORE BOX (NO "TOTAL SCORE" LABEL, NO OVERFLOW ON LARGE SCORES)
+   ============================================================================ */
+.embedded-score-box.centered-score-box {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 112px;
+  background: #0b0d14;
+  border: 2px solid #242c42;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.centered-score-digits-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.centered-score-box .score-big-digits {
+  font-size: clamp(20px, 2.25vw, 28px);
+  max-width: 100%;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.centered-score-pill-row {
+  min-height: 24px;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.centered-score-box .last-delta-pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================================================
+   PILOT PROFILE EDITING, FAVORITE MODE PILLS & COMPACT INLINE BADGES (NO TILES)
+   ============================================================================ */
+.auth-profile-row-stack {
+  background: #0c0f18;
+  border: 1px solid #242c42;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-fav-mode-pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.fav-mode-pill {
+  background: #131929;
+  border: 1.5px solid #2d3854;
+  color: #94a3b8;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 8px 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.fav-mode-pill:hover {
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+
+.fav-mode-pill.linear.active {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.14);
+}
+
+.fav-mode-pill.omni.active {
+  border-color: var(--accent-yellow);
+  color: var(--accent-yellow);
+  background: rgba(255, 234, 0, 0.14);
+}
+
+.fav-mode-pill.binary.active {
+  border-color: #00ff9d;
+  color: #00ff9d;
+  background: rgba(0, 255, 157, 0.14);
+}
+
+.profile-badges-inline-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.profile-badges-inline-strip .pilot-badge-strip {
+  margin-left: 0;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pilot-profile-inspect-modal {
+  max-width: 440px;
+}
+
+.pilot-inspect-trigger {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.pilot-inspect-trigger:hover {
+  color: var(--accent-cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.45);
+}
+
+/* ============================================================================
+   3-MODE TABS & CARDS (LINEAR / OMNI-8 / BINARY)
+   ============================================================================ */
+.mode-toggle-grid.three-cols {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.mode-card-btn.binary-card.active {
+  border-color: #00ff9d;
+  background: rgba(0, 255, 157, 0.09);
+  box-shadow: inset 0 0 10px rgba(0, 255, 157, 0.18);
+}
+
+.mode-card-btn.binary-card.active .mode-card-name {
+  color: #00ff9d;
+}
+
+.leaderboard-mode-tabs.three-cols {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.leaderboard-mode-tab.binary.active {
+  border-color: #00ff9d;
+  background: rgba(0, 255, 157, 0.1);
+  box-shadow: inset 0 0 12px rgba(0, 255, 157, 0.2);
+}
+
+.leaderboard-mode-tab.binary.active .lb-tab-title {
+  color: #00ff9d;
+}
+
+.mode-pill.binary {
+  background: rgba(0, 255, 157, 0.14);
+  color: #00ff9d;
+  border: 1px solid rgba(0, 255, 157, 0.45);
+}
+
+.guide-card.mode-box-binary {
+  border-color: rgba(0, 255, 157, 0.45);
+}
+
+/* ============================================================================
+   BINARY MODE STAGE: LEFT 0-7 DECODER TABLE + TOP 3-BIT REGISTER + 7x4 MATRIX
+   ============================================================================ */
+.binary-stage-layout {
+  display: grid;
+  grid-template-columns: 162px 1fr;
+  gap: 16px;
+  align-items: stretch;
+  width: 100%;
+  height: 670px;
+}
+
+.binary-reference-panel {
+  background: #0b0e17;
+  border: 1.5px solid #232d46;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.binary-ref-header {
+  font-size: 8px;
+  color: #00ff9d;
+  text-align: center;
+  letter-spacing: 0.5px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.binary-decoder-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+.binary-decoder-table th {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #64748b;
+  padding: 5px 4px;
+  text-align: center;
+  border-bottom: 1px solid #1e293b;
+}
+
+.binary-decoder-table td {
+  padding: 6px 6px;
+  text-align: center;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.55);
+  font-weight: 700;
+}
+
+.binary-decoder-table .ref-dec-col {
+  color: #f8fafc;
+}
+
+.binary-decoder-table .ref-bin-col {
+  color: #00f0ff;
+  letter-spacing: 2px;
+}
+
+.binary-decoder-table tr.active-ref-row {
+  background: rgba(0, 255, 157, 0.16);
+  box-shadow: inset 0 0 8px rgba(0, 255, 157, 0.25);
+}
+
+.binary-decoder-table tr.active-ref-row .ref-dec-col,
+.binary-decoder-table tr.active-ref-row .ref-bin-col {
+  color: #ffea00;
+}
+
+.binary-overclock-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid #1e293b;
+  padding-top: 8px;
+}
+
+.binary-legend-title {
+  font-size: 7px;
+  color: var(--accent-yellow);
+  letter-spacing: 0.5px;
+}
+
+.binary-legend-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.binary-legend-item strong {
+  font-size: 10px;
+  color: #00ff9d;
+}
+
+.binary-legend-item span {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.binary-center-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.binary-input-register {
+  background: #0b0e17;
+  border: 2px solid #242d44;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.binary-register-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+}
+
+.binary-register-title {
+  font-size: 8px;
+  color: var(--accent-cyan);
+  letter-spacing: 1px;
+}
+
+.binary-register-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.binary-bit-slots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.binary-bit-box {
+  width: 82px;
+  height: 74px;
+  background: #111726;
+  border: 2px solid #2e3b59;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    transform 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.binary-bit-box .bit-weight-label {
+  font-size: 7px;
+  color: #64748b;
+}
+
+.binary-bit-box .bit-slot-value {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 20px;
+  color: #64748b;
+}
+
+.binary-bit-box.active-slot {
+  border-color: var(--accent-yellow);
+  background: rgba(255, 234, 0, 0.1);
+  box-shadow: 0 0 12px rgba(255, 234, 0, 0.28);
+  transform: scale(1.05);
+}
+
+.binary-bit-box.active-slot .bit-weight-label,
+.binary-bit-box.active-slot .bit-slot-value {
+  color: var(--accent-yellow);
+}
+
+.binary-bit-box.filled {
+  border-color: #00ff9d;
+  background: rgba(0, 255, 157, 0.16);
+  box-shadow: inset 0 0 10px rgba(0, 255, 157, 0.25);
+}
+
+.binary-bit-box.filled .bit-weight-label {
+  color: #6ee7b7;
+}
+
+.binary-bit-box.filled .bit-slot-value {
+  color: #00ff9d;
+  text-shadow: 0 0 10px rgba(0, 255, 157, 0.55);
+}
+
+.binary-bit-box.bit-error {
+  border-color: var(--accent-red) !important;
+  background: rgba(255, 42, 84, 0.24) !important;
+  box-shadow: 0 0 16px rgba(255, 42, 84, 0.65) !important;
+  animation: cellErrorFlash 0.34s ease;
+}
+
+.binary-bit-box.bit-error .bit-slot-value {
+  color: #ffffff !important;
+}
+
+/* 7 columns x 4 rows Binary Matrix */
+.board-grid-7x4 {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 8px;
+  background: #0b0e17;
+  border: 1.5px solid #232d46;
+  padding: 16px;
+}
+
+.cell.binary-cell {
+  width: 100%;
+  height: 100%;
+  min-height: 82px;
+  border: 1.5px solid rgba(36, 45, 68, 0.75);
+  background: rgba(15, 20, 34, 0.55);
+  border-radius: 4px;
+}
+
+.cell.binary-cell .cell-digit {
+  width: 18px;
+  height: 24px;
+}
+
+.cell.binary-cell .futuristic-digit-svg {
+  width: 18px;
+  height: 24px;
+}
+
+.cell.binary-cell .cell-shield-svg {
+  width: 44px;
+  height: 44px;
+}
+

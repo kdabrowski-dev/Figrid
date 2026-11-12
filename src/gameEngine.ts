@@ -9,11 +9,17 @@ export const OMNI_CENTER_INDEX = Math.floor(ROWS / 2) * COLS + Math.floor(COLS /
 export const SHIELD_REVEAL_DISTANCE = 7; // Linear mode: shield starts fading in 7 steps ahead
 export const OMNI_SHIELD_REVEAL_DISTANCE = 3; // Omni-8 mode: 2D plane radius halved (3 cells around head)
 
+export const BINARY_ROWS = 4;
+export const BINARY_COLS = 7;
+export const BINARY_TOTAL_CELLS = BINARY_ROWS * BINARY_COLS; // 28
+export const BINARY_SHIELD_COUNT = 5;
+export const BINARY_SHIELD_REVEAL_DISTANCE = 4;
+
 export const CURRENT_GAME_VERSION = '0.0.2';
 export const PREVIOUS_GAME_VERSION = '0.0.1';
 export const V001_COMMIT_HASH = '73a71f0';
 
-export type GameMode = 'LINEAR' | 'OMNI';
+export type GameMode = 'LINEAR' | 'OMNI' | 'BINARY';
 export type SequenceTier = 'SHORT' | 'MEDIUM' | 'LONG' | 'PHI';
 
 export interface QuantumMergeTierInfo {
@@ -350,6 +356,38 @@ function shuffleArray<T>(arr: T[]): T[] {
 export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
   const totalShields =
     FAIR_BOARD_CONFIG.REINFORCED_IN_SEQUENCES + FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM;
+
+  if (mode === 'BINARY') {
+    const cells: CellData[] = new Array(BINARY_TOTAL_CELLS);
+    for (let idx = 0; idx < BINARY_TOTAL_CELLS; idx++) {
+      cells[idx] = {
+        index: idx,
+        digit: Math.floor(Math.random() * 8), // 0..7 octal/3-bit digits
+        isReinforced: false,
+        sequenceInstanceId: null,
+        sequenceTier: null,
+        isSequenceStart: false,
+        isSequenceEnd: false,
+      };
+    }
+
+    const candidateIndices: number[] = [];
+    for (let idx = 1; idx < BINARY_TOTAL_CELLS; idx++) {
+      candidateIndices.push(idx);
+    }
+
+    const chosenReinforced = shuffleArray(candidateIndices).slice(0, BINARY_SHIELD_COUNT);
+    for (const idx of chosenReinforced) {
+      cells[idx].isReinforced = true;
+    }
+
+    return {
+      cells,
+      sequences: [],
+      totalTheoreticalSeqBonus: 0,
+      totalReinforcedCount: BINARY_SHIELD_COUNT,
+    };
+  }
 
   // In v0.0.2, OMNI-8 mode has NO secret sequences at all!
   if (mode === 'OMNI') {
@@ -1001,7 +1039,8 @@ export function saveKeyBindings(bindings: KeyBindingsMap): void {
 export function loadGameMode(): GameMode {
   try {
     const raw = localStorage.getItem(MODE_STORAGE_KEY);
-    return raw === 'OMNI' ? 'OMNI' : 'LINEAR';
+    if (raw === 'OMNI' || raw === 'BINARY') return raw;
+    return 'LINEAR';
   } catch {
     return 'LINEAR';
   }

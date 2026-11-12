@@ -139,7 +139,47 @@ export const BadgeIcon: React.FC<BadgeIconProps> = ({ code, size = 22, className
     );
   }
 
-  // 4. OMNI 100 / 1000 / 10000: 8-Way Quantum Starburst / Singularity Compass
+  // 4. BINARY 100 / 1000 / 10000: 8-Bit Silicon CPU Microchip / Logic Gate Core
+  if (normalized.startsWith('BINARY_')) {
+    const isBin10k = normalized === 'BINARY_10000';
+    const isBin1k = normalized === 'BINARY_1000';
+    const pinColor = isBin10k ? '#ffd700' : isBin1k ? '#00ff66' : '#00f0ff';
+    const dieColor = isBin10k ? '#ff00e5' : isBin1k ? '#00f0ff' : '#10b981';
+
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        className={`figrid-badge-svg badge-binary ${className}`}
+        shapeRendering="crispEdges"
+      >
+        {/* Top & Bottom Silicon Pins */}
+        <rect x="7" y="1" width="2" height="3" fill={pinColor} />
+        <rect x="11" y="1" width="2" height="3" fill={pinColor} />
+        <rect x="15" y="1" width="2" height="3" fill={pinColor} />
+        <rect x="7" y="20" width="2" height="3" fill={pinColor} />
+        <rect x="11" y="20" width="2" height="3" fill={pinColor} />
+        <rect x="15" y="20" width="2" height="3" fill={pinColor} />
+        {/* Left & Right Silicon Pins */}
+        <rect x="1" y="7" width="3" height="2" fill={pinColor} />
+        <rect x="1" y="11" width="3" height="2" fill={pinColor} />
+        <rect x="1" y="15" width="3" height="2" fill={pinColor} />
+        <rect x="20" y="7" width="3" height="2" fill={pinColor} />
+        <rect x="20" y="11" width="3" height="2" fill={pinColor} />
+        <rect x="20" y="15" width="3" height="2" fill={pinColor} />
+        {/* CPU Die Body */}
+        <rect x="4" y="4" width="16" height="16" fill={dieColor} />
+        <rect x="6" y="6" width="12" height="12" fill="#090d16" />
+        {/* Pixel "0" and "1" Logic Core */}
+        <rect x="7" y="8" width="4" height="8" fill={pinColor} />
+        <rect x="8" y="10" width="2" height="4" fill="#090d16" />
+        <rect x="14" y="8" width="2" height="8" fill="#ffffff" />
+      </svg>
+    );
+  }
+
+  // 5. OMNI 100 / 1000 / 10000: 8-Way Quantum Starburst / Singularity Compass
   const isOmni10k = normalized === 'OMNI_10000';
   const isOmni1k = normalized === 'OMNI_1000';
   const starOuter = isOmni10k ? '#ffd700' : isOmni1k ? '#ff00e5' : '#ff9100';
@@ -240,6 +280,85 @@ export const BadgeInspectModal: React.FC<BadgeInspectModalProps> = ({ badge, onC
           <button type="button" className="btn-arcade cyan" onClick={onClose}>
             CLOSE
           </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export interface InspectedPilotInfo {
+  username?: string;
+  nick: string;
+  favoriteMode?: string;
+  badges?: UserBadge[];
+}
+
+interface PilotProfileModalProps {
+  pilot: InspectedPilotInfo | null;
+  onClose: () => void;
+  onInspectBadge: (badge: UserBadge) => void;
+}
+
+export const PilotProfileModal: React.FC<PilotProfileModalProps> = ({
+  pilot,
+  onClose,
+  onInspectBadge,
+}) => {
+  if (!pilot) return null;
+
+  const favModeLabel =
+    pilot.favoriteMode === 'OMNI'
+      ? 'OMNI-8'
+      : pilot.favoriteMode === 'BINARY'
+      ? 'BINARY (7x4)'
+      : 'LINEAR';
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box auth-modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>PILOT DOSSIER // PROFILE</h2>
+          <button type="button" className="btn-close" onClick={onClose}>
+            X
+          </button>
+        </div>
+
+        <div className="auth-profile-view">
+          {pilot.username && (
+            <div className="auth-profile-row">
+              <span className="hud-label">PILOT CALLSIGN</span>
+              <strong className="auth-username">{pilot.username}</strong>
+            </div>
+          )}
+          <div className="auth-profile-row">
+            <span className="hud-label">3-LETTER TAG</span>
+            <strong className="auth-nick-badge">{pilot.nick}</strong>
+          </div>
+          <div className="auth-profile-row">
+            <span className="hud-label">FAVORITE MODE</span>
+            <strong className="highlight-cyan">{favModeLabel}</strong>
+          </div>
+
+          <div className="profile-badges-section">
+            <span className="hud-label">EARNED PILOT BADGES (CLICK TO INSPECT)</span>
+            {pilot.badges && pilot.badges.length > 0 ? (
+              <div className="profile-badges-inline-strip">
+                <BadgeList
+                  badges={pilot.badges}
+                  size={28}
+                  onInspectBadge={(b) => onInspectBadge(b)}
+                />
+              </div>
+            ) : (
+              <div className="profile-no-badges">No badges earned yet.</div>
+            )}
+          </div>
+
+          <div className="modal-footer">
+            <button type="button" className="btn-arcade cyan" onClick={onClose}>
+              CLOSE
+            </button>
+          </div>
         </div>
       </div>
     </div>

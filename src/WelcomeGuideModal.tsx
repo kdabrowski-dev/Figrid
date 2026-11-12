@@ -133,6 +133,41 @@ export const WelcomeGuideModal: React.FC<WelcomeGuideModalProps> = ({ isOpen, on
                 </ul>
               </div>
             </div>
+
+            {/* BINARY 3-BIT DECODER MODE */}
+            <div className="guide-card mode-box-binary" style={{ marginTop: '12px' }}>
+              <div className="guide-mode-header">
+                <span className="mode-pill binary">BINARY MODE (7x4 MATRIX)</span>
+                <span className="guide-mode-tag">3-BIT OCTAL DECODER</span>
+              </div>
+              <ul className="guide-list">
+                <li>
+                  <strong>Decimal Sight, Binary Input:</strong> A compact{' '}
+                  <strong>7x4 matrix (28 tiles)</strong> displays digits <strong>0 through 7</strong>
+                  , with a live 0–7 binary reference table on the left and a{' '}
+                  <strong>3-Bit Input Register ([4] [2] [1])</strong> above the board. Decode each
+                  tile left-to-right by typing its 3 binary bits using keys <strong>[0]</strong> and{' '}
+                  <strong>[1]</strong>.
+                </li>
+                <li>
+                  <strong>Non-Resetting Bit Errors:</strong> If you press the wrong bit, your
+                  already-entered bits in the 3-bit register are <strong>never cleared</strong> —
+                  only the missed bit slot refuses to fill and deducts a mistake penalty.
+                </li>
+                <li>
+                  <strong>Unique Binary Overclock Bonuses:</strong>
+                  <br />• <strong>PURE SIGNAL BURST (+220 PTS):</strong> Decode uniform-bit tiles{' '}
+                  <code>0 (000)</code> or <code>7 (111)</code> at high speed (avg bit delta &le;
+                  160ms).
+                  <br />• <strong>XOR-7 COMPLEMENT OVERCLOCK (+450 PTS):</strong> Decode two
+                  consecutive tiles whose bits are exact bitwise inversions (
+                  <code>prev ^ curr == 7</code>, e.g. <code>2 [010] &rarr; 5 [101]</code> or{' '}
+                  <code>1 [001] &rarr; 6 [110]</code>) within avg bit delta &le; 260ms.
+                  <br />• <strong>ROW REGISTER FLUSH (+650 PTS):</strong> Clear an entire 7-tile row
+                  register at high speed (avg bit delta &le; 230ms).
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
 

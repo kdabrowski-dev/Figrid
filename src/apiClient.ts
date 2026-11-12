@@ -80,11 +80,18 @@ function mapRawBadges(rawBadges: unknown): UserBadge[] {
 }
 
 function mapRawScoreEntry(item: Record<string, unknown>): LeaderboardEntry {
+  const rawMode = String(item.mode ?? 'LINEAR').toUpperCase();
+  const modeVal: GameMode =
+    rawMode === 'OMNI' ? 'OMNI' : rawMode === 'BINARY' ? 'BINARY' : 'LINEAR';
+  const rawPref = String(item.preferredMode ?? 'LINEAR').toUpperCase();
+  const prefModeVal: GameMode =
+    rawPref === 'OMNI' ? 'OMNI' : rawPref === 'BINARY' ? 'BINARY' : 'LINEAR';
+
   return {
     id: String(item.id ?? `score-${Math.random()}`),
     nick: String(item.nick ?? 'AAA').slice(0, 3).toUpperCase(),
     score: Number(item.score ?? 0),
-    mode: item.mode === 'OMNI' ? 'OMNI' : 'LINEAR',
+    mode: modeVal,
     version: item.version ? String(item.version) : CURRENT_GAME_VERSION,
     podiumRank: typeof item.podiumRank === 'number' ? item.podiumRank : undefined,
     totalTimeSec: Number(item.totalTimeSec ?? 0),
@@ -92,6 +99,7 @@ function mapRawScoreEntry(item: Record<string, unknown>): LeaderboardEntry {
     mistakes: Number(item.mistakes ?? 0),
     date: String(item.date ?? new Date().toISOString().slice(0, 10)),
     username: item.username ? String(item.username) : undefined,
+    preferredMode: prefModeVal,
     badges: mapRawBadges(item.badges),
   };
 }
@@ -179,7 +187,10 @@ export async function apiUpdateUserSettings(payload: {
   }
 }
 
-export async function apiStartGameSession(mode: GameMode): Promise<{
+export async function apiStartGameSession(
+  mode: GameMode,
+  clientBoard?: GeneratedBoard
+): Promise<{
   sessionToken: string;
   board: GeneratedBoard;
 } | null> {
@@ -187,7 +198,7 @@ export async function apiStartGameSession(mode: GameMode): Promise<{
     const res = await fetch(`${getApiBaseUrl()}/api/game/start`, {
       method: 'POST',
       headers: buildHeaders(true),
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, board: clientBoard }),
     });
     if (!res.ok) return null;
     const json = await res.json();
@@ -260,7 +271,7 @@ export async function apiFetchSharedLeaderboard(): Promise<{
   online: boolean;
 }> {
   try {
-    const [linearRes, omniRes] = await Promise.all([
+    const [linearRes, omniRes, binaryRes] = await Promise.all([
       fetch(`${getApiBaseUrl()}/api/leaderboard?mode=LINEAR&limit=200`, {
         method: 'GET',
         headers: buildHeaders(false),
@@ -269,14 +280,20 @@ export async function apiFetchSharedLeaderboard(): Promise<{
         method: 'GET',
         headers: buildHeaders(false),
       }),
+      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=BINARY&limit=200`, {
+        method: 'GET',
+        headers: buildHeaders(false),
+      }),
     ]);
 
     if (linearRes.ok && omniRes.ok) {
       const linearJson = await linearRes.json();
       const omniJson = await omniRes.json();
+      const binaryJson = binaryRes.ok ? await binaryRes.json() : { data: [] };
       const rawLinear = Array.isArray(linearJson?.data) ? linearJson.data : [];
       const rawOmni = Array.isArray(omniJson?.data) ? omniJson.data : [];
-      const combined = [...rawLinear, ...rawOmni];
+      const rawBinary = Array.isArray(binaryJson?.data) ? binaryJson.data : [];
+      const combined = [...rawLinear, ...rawOmni, ...rawBinary];
 
       const entries: LeaderboardEntry[] = combined.map((item: Record<string, unknown>) =>
         mapRawScoreEntry(item)

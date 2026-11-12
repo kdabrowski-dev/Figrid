@@ -149,7 +149,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
               <span className="mode-locked-note">(LOCKED DURING ACTIVE RUN - RESTART TO CHANGE)</span>
             )}
           </div>
-          <div className="mode-toggle-grid">
+          <div className="mode-toggle-grid three-cols">
             <button
               type="button"
               disabled={isModeLocked}
@@ -162,7 +162,7 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
             >
               <span className="mode-card-name">LINEAR (LEFT TO RIGHT)</span>
               <span className="mode-card-desc">
-                Classic reading order from index 0 to 272 row by row.
+                Classic reading order from index 0 to 272 row by row with 11 hidden speed sequences.
               </span>
             </button>
             <button
@@ -179,6 +179,22 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
               <span className="mode-card-desc">
                 Move in any of the 8 surrounding directions with edge wrap-around, phase-jump over
                 cleared tiles, and quantum multi-path tracking!
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={isModeLocked}
+              className={`mode-card-btn binary-card ${draftMode === 'BINARY' ? 'active' : ''} ${
+                isModeLocked ? 'disabled-locked' : ''
+              }`}
+              onClick={() => {
+                if (!isModeLocked) setDraftMode('BINARY');
+              }}
+            >
+              <span className="mode-card-name">BINARY (3-BIT DECODER 7x4)</span>
+              <span className="mode-card-desc">
+                7x4 octal matrix (digits 0–7). Read decimal digits on the board and decode each tile
+                by typing its 3-bit binary sequence using keys [0] and [1]!
               </span>
             </button>
           </div>

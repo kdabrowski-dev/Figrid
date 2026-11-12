@@ -1,7 +1,7 @@
-import React from 'react';
-import { GameMode, TOTAL_CELLS, CURRENT_GAME_VERSION } from './gameEngine';
+import React, { useState } from 'react';
+import { GameMode, TOTAL_CELLS, BINARY_TOTAL_CELLS, CURRENT_GAME_VERSION } from './gameEngine';
 import { UserProfile } from './apiClient';
-import { BadgeList } from './BadgeIcons';
+import { UserBadge, BadgeList, BadgeInspectModal } from './BadgeIcons';
 
 export interface SpeedSample {
   step: number;
@@ -68,8 +68,10 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
   reinforcedHitCount,
   totalReinforcedCount,
 }) => {
+  const [inspectedBadge, setInspectedBadge] = useState<UserBadge | null>(null);
   const currentKps = lastSpeedMs && lastSpeedMs > 0 ? (1000 / lastSpeedMs).toFixed(1) : '0.0';
   const avgKps = avgSpeedMs && avgSpeedMs > 0 ? (1000 / avgSpeedMs).toFixed(1) : '0.0';
+  const totalBoardCells = gameMode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
 
   return (
     <aside className="side-panel">
@@ -93,6 +95,8 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             <span className="brand-subtitle">
               {gameMode === 'OMNI'
                 ? '21x13 OMNI-DIRECTIONAL QUANTUM MATRIX'
+                : gameMode === 'BINARY'
+                ? '7x4 BINARY 3-BIT DECODER MATRIX'
                 : '21x13 SPEED MATRIX'}
             </span>
           </div>
@@ -114,26 +118,26 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
           <div className="progress-box">
             <span className="hud-label">PROGRESS</span>
             <span ref={progressNodeRef} className="hud-progress-val">
-              0 / {TOTAL_CELLS}
+              0 / {totalBoardCells}
             </span>
           </div>
           <button
             type="button"
             disabled={hasStarted}
-            className={`btn-arcade small ${gameMode === 'OMNI' ? 'gold' : 'cyan'} ${
-              hasStarted ? 'disabled-locked' : ''
-            }`}
+            className={`btn-arcade small ${
+              gameMode === 'OMNI' ? 'gold' : gameMode === 'BINARY' ? 'magenta' : 'cyan'
+            } ${hasStarted ? 'disabled-locked' : ''}`}
             title={
               hasStarted
                 ? 'Mode is locked while a run is in progress. Press RESTART [ESC] to switch mode.'
-                : 'Switch between Linear and Omni-8 Free Direction mode'
+                : 'Switch between Linear, Omni-8, and Binary 7x4 mode'
             }
             onClick={(e) => {
               e.currentTarget.blur();
               onQuickToggleMode();
             }}
           >
-            MODE: {gameMode === 'OMNI' ? 'OMNI-8' : 'LINEAR'}
+            MODE: {gameMode === 'OMNI' ? 'OMNI-8' : gameMode === 'BINARY' ? 'BINARY' : 'LINEAR'}
           </button>
         </div>
 
@@ -148,7 +152,11 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
           >
             <span>{currentUser ? `PILOT: ${currentUser.username}` : 'LOGIN / REGISTER'}</span>
             {currentUser && currentUser.badges && currentUser.badges.length > 0 && (
-              <BadgeList badges={currentUser.badges.slice(0, 2)} size={15} />
+              <BadgeList
+                badges={currentUser.badges.slice(0, 3)}
+                size={16}
+                onInspectBadge={(b) => setInspectedBadge(b)}
+              />
             )}
           </button>
           <button
@@ -191,16 +199,13 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
           <span className="panel-badge">{currentKps} KEYS/S</span>
         </div>
 
-        {/* SCORE BOX */}
-        <div className="embedded-score-box">
+        {/* SCORE BOX (CENTERED SCORE WITHOUT "TOTAL SCORE" LABEL) */}
+        <div className="embedded-score-box centered-score-box">
           <div ref={deltaPopupRootRef} className="delta-popup-layer" />
-          <div className="bottom-score-top-row">
-            <span className="hud-label">TOTAL SCORE</span>
-            <span ref={lastDeltaBadgeRef} className="last-delta-pill">
-              +0
-            </span>
-          </div>
-          <div className="bottom-score-digits-row">
+          <span ref={lastDeltaBadgeRef} className="last-delta-pill floating-delta-pill">
+            +0
+          </span>
+          <div className="bottom-score-digits-row centered-digits-row">
             <span ref={scoreNodeRef} className="score-big-digits">
               0
             </span>
@@ -237,16 +242,25 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
           </div>
           <div className="telemetry-item">
             <span className="telemetry-label">
-              {gameMode === 'OMNI' ? 'QUANTUM MERGES' : 'SECRET SEQUENCES'}
+              {gameMode === 'OMNI'
+                ? 'QUANTUM MERGES'
+                : gameMode === 'BINARY'
+                ? 'BINARY OVERCLOCKS'
+                : 'SECRET SEQUENCES'}
             </span>
             <span className="telemetry-val highlight-gold">
               {gameMode === 'OMNI'
                 ? `${quantumMergesCount}`
+                : gameMode === 'BINARY'
+                ? `${sequencesHitCount}`
                 : `${sequencesHitCount} / ${totalSequencesCount}`}
             </span>
           </div>
         </div>
       </div>
+
+      {/* CLICK-TO-INSPECT BADGE MODAL FROM PILOT HEADER BUTTON */}
+      <BadgeInspectModal badge={inspectedBadge} onClose={() => setInspectedBadge(null)} />
     </aside>
   );
 };
