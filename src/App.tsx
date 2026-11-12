@@ -320,6 +320,19 @@ export const App: React.FC = () => {
     const initPromise = apiStartGameSession(gameMode, board).then((session) => {
       if (session && engineRef.current.totalKeystrokes === 0 && !engineRef.current.isFinished) {
         serverSessionTokenRef.current = session.sessionToken;
+        const serverCells = session.board?.cells;
+        if (
+          Array.isArray(serverCells) &&
+          (serverCells.length !== board.cells.length ||
+            serverCells.some(
+              (c, i) =>
+                c.digit !== board.cells[i]?.digit ||
+                Boolean(c.isReinforced) !== Boolean(board.cells[i]?.isReinforced)
+            ))
+        ) {
+          setBoard(session.board);
+          engineRef.current.shieldIntactOnCurrent = Boolean(serverCells[0]?.isReinforced);
+        }
       }
       return session;
     });
@@ -733,6 +746,20 @@ export const App: React.FC = () => {
       const startPromise = apiStartGameSession(targetMode, newBoard).then((session) => {
         if (session && !engineRef.current.isFinished) {
           serverSessionTokenRef.current = session.sessionToken;
+          const serverCells = session.board?.cells;
+          if (
+            engineRef.current.totalKeystrokes === 0 &&
+            Array.isArray(serverCells) &&
+            (serverCells.length !== newBoard.cells.length ||
+              serverCells.some(
+                (c, i) =>
+                  c.digit !== newBoard.cells[i]?.digit ||
+                  Boolean(c.isReinforced) !== Boolean(newBoard.cells[i]?.isReinforced)
+              ))
+          ) {
+            setBoard(session.board);
+            engineRef.current.shieldIntactOnCurrent = Boolean(serverCells[0]?.isReinforced);
+          }
         }
         return session;
       });
