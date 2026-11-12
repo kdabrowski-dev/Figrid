@@ -2068,14 +2068,13 @@ export const App: React.FC = () => {
 
               {gameMode === 'BINARY' ? (
                 <div className="binary-stage-layout">
-                  {/* LEFT PANEL: 0-7 BINARY REFERENCE TABLE & OVERCLOCK BONUSES */}
+                  {/* LEFT PANEL: COMPACT 0-7 BINARY REFERENCE TABLE */}
                   <aside className="binary-reference-panel">
-                    <div className="binary-ref-header">3-BIT OCTAL DECODER</div>
                     <table className="binary-decoder-table">
                       <thead>
                         <tr>
                           <th>DEC</th>
-                          <th>BIN (4-2-1)</th>
+                          <th>BIN</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2098,62 +2097,35 @@ export const App: React.FC = () => {
                         })}
                       </tbody>
                     </table>
-                    <div className="binary-overclock-legend">
-                      <div className="binary-legend-title">OVERCLOCK BONUSES</div>
-                      <div className="binary-legend-item">
-                        <strong>PURE SIGNAL (+220)</strong>
-                        <span>Fast 0 (000) or 7 (111)</span>
-                      </div>
-                      <div className="binary-legend-item">
-                        <strong>XOR-7 COMPLEMENT (+450)</strong>
-                        <span>Bitwise NOT pair (e.g. 2&rarr;5, 1&rarr;6)</span>
-                      </div>
-                      <div className="binary-legend-item">
-                        <strong>ROW FLUSH (+650)</strong>
-                        <span>Fast 7-tile row clear</span>
-                      </div>
-                    </div>
                   </aside>
 
-                  {/* CENTER: TOP 3-BIT INPUT REGISTER + 7x4 MATRIX */}
+                  {/* CENTER: COMPACT 3-BIT INPUT SLOTS + TIGHT 7x7 MATRIX */}
                   <div className="binary-center-column">
-                    <div className="binary-input-register">
-                      <div className="binary-register-header">
-                        <span className="binary-register-title">
-                          ACTIVE 3-BIT INPUT REGISTER // TARGET TILE #{Math.min(binaryActiveTargetIdx + 1, BINARY_TOTAL_CELLS)}
-                        </span>
-                        <span className="binary-register-sub">
-                          TYPE [0] OR [1] (WRONG BIT DOES NOT RESET REGISTER)
-                        </span>
-                      </div>
-                      <div className="binary-bit-slots">
-                        {[0, 1, 2].map((slotIdx) => {
-                          const bitWeight = slotIdx === 0 ? 4 : slotIdx === 1 ? 2 : 1;
-                          const targetCell = board.cells[binaryActiveTargetIdx];
-                          const targetDigit = targetCell ? targetCell.digit : 0;
-                          const isFilled = slotIdx < binaryBitCursor;
-                          const isCurrentSlot = slotIdx === binaryBitCursor && !isFinished;
-                          const isErrorSlot = binaryBitErrorSlot === slotIdx;
-                          const filledBitVal = (targetDigit >> (2 - slotIdx)) & 1;
+                    <div className="binary-bit-slots">
+                      {[0, 1, 2].map((slotIdx) => {
+                        const targetCell = board.cells[binaryActiveTargetIdx];
+                        const targetDigit = targetCell ? targetCell.digit : 0;
+                        const isFilled = slotIdx < binaryBitCursor;
+                        const isCurrentSlot = slotIdx === binaryBitCursor && !isFinished;
+                        const isErrorSlot = binaryBitErrorSlot === slotIdx;
+                        const filledBitVal = (targetDigit >> (2 - slotIdx)) & 1;
 
-                          return (
-                            <div
-                              key={slotIdx}
-                              className={`binary-bit-box ${isFilled ? 'filled' : ''} ${
-                                isCurrentSlot ? 'active-slot' : ''
-                              } ${isErrorSlot ? 'bit-error' : ''}`}
-                            >
-                              <span className="bit-weight-label">BIT {bitWeight}</span>
-                              <span className="bit-slot-value">
-                                {isFilled ? filledBitVal : '_'}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
+                        return (
+                          <div
+                            key={slotIdx}
+                            className={`binary-bit-box ${isFilled ? 'filled' : ''} ${
+                              isCurrentSlot ? 'active-slot' : ''
+                            } ${isErrorSlot ? 'bit-error' : ''}`}
+                          >
+                            <span className="bit-slot-value">
+                              {isFilled ? filledBitVal : '_'}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
-                    <div className="board-grid-7x4">
+                    <div className="board-grid-7x7">
                       {board.cells.map((cell, idx) => (
                         <div
                           key={idx}

@@ -96,7 +96,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
               {gameMode === 'OMNI'
                 ? '21x13 OMNI-DIRECTIONAL QUANTUM MATRIX'
                 : gameMode === 'BINARY'
-                ? '7x4 BINARY 3-BIT DECODER MATRIX'
+                ? '7x7 BINARY 3-BIT DECODER MATRIX'
                 : '21x13 SPEED MATRIX'}
             </span>
           </div>
@@ -130,7 +130,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             title={
               hasStarted
                 ? 'Mode is locked while a run is in progress. Press RESTART [ESC] to switch mode.'
-                : 'Switch between Linear, Omni-8, and Binary 7x4 mode'
+                : 'Switch between Linear, Omni-8, and Binary 7x7 mode'
             }
             onClick={(e) => {
               e.currentTarget.blur();

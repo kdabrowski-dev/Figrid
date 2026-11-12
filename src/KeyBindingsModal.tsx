@@ -191,9 +191,9 @@ export const KeyBindingsModal: React.FC<KeyBindingsModalProps> = ({
                 if (!isModeLocked) setDraftMode('BINARY');
               }}
             >
-              <span className="mode-card-name">BINARY (3-BIT DECODER 7x4)</span>
+              <span className="mode-card-name">BINARY (3-BIT DECODER 7x7)</span>
               <span className="mode-card-desc">
-                7x4 octal matrix (digits 0–7). Read decimal digits on the board and decode each tile
+                7x7 octal matrix (digits 0–7). Read decimal digits on the board and decode each tile
                 by typing its 3-bit binary sequence using keys [0] and [1]!
               </span>
             </button>

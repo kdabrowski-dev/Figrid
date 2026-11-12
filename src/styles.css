@@ -2838,13 +2838,13 @@ body {
 }
 
 /* ============================================================================
-   BINARY MODE STAGE: LEFT 0-7 DECODER TABLE + TOP 3-BIT REGISTER + 7x4 MATRIX
+   BINARY MODE STAGE: COMPACT LEFT 0-7 DECODER TABLE + SMALL 3-BIT SLOTS + TIGHT 7x7 MATRIX
    ============================================================================ */
 .binary-stage-layout {
-  display: grid;
-  grid-template-columns: 162px 1fr;
-  gap: 16px;
-  align-items: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
   width: 100%;
   height: 670px;
 }
@@ -2852,20 +2852,10 @@ body {
 .binary-reference-panel {
   background: #0b0e17;
   border: 1.5px solid #232d46;
-  padding: 12px 10px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.binary-ref-header {
-  font-size: 8px;
-  color: #00ff9d;
-  text-align: center;
-  letter-spacing: 0.5px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #1e293b;
+  padding: 8px 10px;
+  width: 122px;
+  height: auto;
+  flex-shrink: 0;
 }
 
 .binary-decoder-table {
@@ -2885,10 +2875,14 @@ body {
 }
 
 .binary-decoder-table td {
-  padding: 6px 6px;
+  padding: 5px 6px;
   text-align: center;
   border-bottom: 1px solid rgba(30, 41, 59, 0.55);
   font-weight: 700;
+}
+
+.binary-decoder-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .binary-decoder-table .ref-dec-col {
@@ -2910,91 +2904,30 @@ body {
   color: #ffea00;
 }
 
-.binary-overclock-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  border-top: 1px solid #1e293b;
-  padding-top: 8px;
-}
-
-.binary-legend-title {
-  font-size: 7px;
-  color: var(--accent-yellow);
-  letter-spacing: 0.5px;
-}
-
-.binary-legend-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.binary-legend-item strong {
-  font-size: 10px;
-  color: #00ff9d;
-}
-
-.binary-legend-item span {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
 .binary-center-column {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.binary-input-register {
-  background: #0b0e17;
-  border: 2px solid #242d44;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
-}
-
-.binary-register-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  text-align: center;
-}
-
-.binary-register-title {
-  font-size: 8px;
-  color: var(--accent-cyan);
-  letter-spacing: 1px;
-}
-
-.binary-register-sub {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #94a3b8;
+  justify-content: center;
+  gap: 14px;
 }
 
 .binary-bit-slots {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 8px;
 }
 
 .binary-bit-box {
-  width: 82px;
-  height: 74px;
+  width: 38px;
+  height: 34px;
   background: #111726;
-  border: 2px solid #2e3b59;
+  border: 1.5px solid #2e3b59;
+  border-radius: 3px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
   transition:
     border-color 0.14s ease,
     background-color 0.14s ease,
@@ -3002,25 +2935,19 @@ body {
     box-shadow 0.14s ease;
 }
 
-.binary-bit-box .bit-weight-label {
-  font-size: 7px;
-  color: #64748b;
-}
-
 .binary-bit-box .bit-slot-value {
   font-family: 'Press Start 2P', monospace;
-  font-size: 20px;
+  font-size: 13px;
   color: #64748b;
 }
 
 .binary-bit-box.active-slot {
   border-color: var(--accent-yellow);
   background: rgba(255, 234, 0, 0.1);
-  box-shadow: 0 0 12px rgba(255, 234, 0, 0.28);
-  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(255, 234, 0, 0.28);
+  transform: scale(1.06);
 }
 
-.binary-bit-box.active-slot .bit-weight-label,
 .binary-bit-box.active-slot .bit-slot-value {
   color: var(--accent-yellow);
 }
@@ -3028,22 +2955,18 @@ body {
 .binary-bit-box.filled {
   border-color: #00ff9d;
   background: rgba(0, 255, 157, 0.16);
-  box-shadow: inset 0 0 10px rgba(0, 255, 157, 0.25);
-}
-
-.binary-bit-box.filled .bit-weight-label {
-  color: #6ee7b7;
+  box-shadow: inset 0 0 8px rgba(0, 255, 157, 0.25);
 }
 
 .binary-bit-box.filled .bit-slot-value {
   color: #00ff9d;
-  text-shadow: 0 0 10px rgba(0, 255, 157, 0.55);
+  text-shadow: 0 0 8px rgba(0, 255, 157, 0.55);
 }
 
 .binary-bit-box.bit-error {
   border-color: var(--accent-red) !important;
   background: rgba(255, 42, 84, 0.24) !important;
-  box-shadow: 0 0 16px rgba(255, 42, 84, 0.65) !important;
+  box-shadow: 0 0 14px rgba(255, 42, 84, 0.65) !important;
   animation: cellErrorFlash 0.34s ease;
 }
 
@@ -3051,39 +2974,19 @@ body {
   color: #ffffff !important;
 }
 
-/* 7 columns x 4 rows Binary Matrix */
-.board-grid-7x4 {
-  flex: 1;
+/* Compact 7x7 Square Binary Matrix */
+.board-grid-7x7 {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-template-rows: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(7, 38px);
+  grid-template-rows: repeat(7, 34px);
+  gap: 4px;
   background: #0b0e17;
   border: 1.5px solid #232d46;
-  padding: 16px;
+  padding: 12px;
 }
 
 .cell.binary-cell {
-  width: 100%;
-  height: 100%;
-  min-height: 82px;
-  border: 1.5px solid rgba(36, 45, 68, 0.75);
-  background: rgba(15, 20, 34, 0.55);
-  border-radius: 4px;
-}
-
-.cell.binary-cell .cell-digit {
-  width: 18px;
-  height: 24px;
-}
-
-.cell.binary-cell .futuristic-digit-svg {
-  width: 18px;
-  height: 24px;
-}
-
-.cell.binary-cell .cell-shield-svg {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 34px;
 }
 
