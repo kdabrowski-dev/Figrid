@@ -2983,3 +2983,329 @@ body {
   height: 34px;
 }
 
+/* ============================================================================
+   VERTICAL MOBILE MODE & CYBER-NUMPAD CONTROLLER (PORTRAIT PHONES)
+   ============================================================================ */
+.mobile-cyber-numpad {
+  display: none;
+  width: 100%;
+  background: var(--panel-bg);
+  border: 2px solid var(--panel-border);
+  box-shadow: 0 6px 0 #040508;
+  padding: 8px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.is-mobile-shell .mobile-cyber-numpad {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mobile-numpad-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px 2px;
+}
+
+.mobile-numpad-title {
+  font-size: 7px;
+  color: #64748b;
+  letter-spacing: 0.5px;
+}
+
+.mobile-layout-toggle-btn {
+  background: #131b2e;
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.mobile-numpad-grid.layout-2x5 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.mobile-numpad-grid.layout-3x4 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.mobile-pad-btn {
+  background: linear-gradient(180deg, #182238 0%, #0f1626 100%);
+  border: 1.5px solid #334155;
+  border-radius: 4px;
+  color: #f8fafc;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #05070b;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.04s ease, border-color 0.08s ease, background-color 0.08s ease;
+}
+
+.mobile-numpad-grid.layout-3x4 .mobile-pad-btn {
+  height: 44px;
+}
+
+.mobile-pad-btn.zero-wide-btn {
+  grid-column: 1 / -1;
+}
+
+.mobile-pad-btn:active {
+  transform: translateY(2px);
+  border-color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.2);
+  box-shadow: 0 1px 0 #05070b, 0 0 12px rgba(0, 240, 255, 0.45);
+}
+
+.mobile-pad-digit {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 16px;
+  color: #f8fafc;
+}
+
+.mobile-pad-sub {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #94a3b8;
+}
+
+.mobile-binary-dual-pad {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mobile-pad-btn.binary-pad-btn {
+  height: 78px;
+  border-width: 2px;
+}
+
+.mobile-pad-btn.binary-pad-btn.bit-0 {
+  border-color: var(--accent-cyan);
+  background: linear-gradient(180deg, rgba(0, 240, 255, 0.14) 0%, #0f172a 100%);
+}
+
+.mobile-pad-btn.binary-pad-btn.bit-0 .mobile-pad-digit {
+  font-size: 22px;
+  color: var(--accent-cyan);
+}
+
+.mobile-pad-btn.binary-pad-btn.bit-1 {
+  border-color: #00ff9d;
+  background: linear-gradient(180deg, rgba(0, 255, 157, 0.14) 0%, #0f172a 100%);
+}
+
+.mobile-pad-btn.binary-pad-btn.bit-1 .mobile-pad-digit {
+  font-size: 22px;
+  color: #00ff9d;
+}
+
+@media (max-width: 960px) {
+  body {
+    overflow-y: auto;
+  }
+
+  .app-shell {
+    padding: 6px;
+    justify-content: flex-start;
+    min-height: 100dvh;
+  }
+
+  .main-workspace {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 460px;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  .side-panel {
+    order: 1;
+    width: 100%;
+    height: auto;
+    gap: 6px;
+  }
+
+  .right-header-card {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .brand-title-big {
+    font-size: 16px;
+  }
+
+  .brand-subtitle {
+    display: none;
+  }
+
+  .right-header-actions-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  .right-header-actions-grid .btn-arcade.small {
+    font-size: 6.5px;
+    padding: 6px 4px;
+  }
+
+  .right-kpi-score-card {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .right-kpi-score-card .panel-header {
+    display: none;
+  }
+
+  .embedded-score-box.centered-score-box {
+    min-height: 44px;
+    padding: 6px 8px;
+  }
+
+  .score-big-digits {
+    font-size: 20px;
+  }
+
+  .telemetry-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+
+  .telemetry-item {
+    padding: 4px 6px;
+  }
+
+  .telemetry-label {
+    font-size: 5.5px;
+  }
+
+  .telemetry-val {
+    font-size: 10px;
+  }
+
+  .board-section {
+    order: 2;
+    width: 100%;
+    height: auto;
+    padding: 10px 6px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .board-grid-21x13 {
+    --mobile-cell-w: clamp(21px, calc((100vw - 38px) / 13), 30px);
+    --mobile-cell-h: clamp(17px, calc((100dvh - 360px) / 21), 24px);
+    grid-template-columns: repeat(13, var(--mobile-cell-w));
+    grid-template-rows: repeat(21, var(--mobile-cell-h));
+    gap: 1px;
+  }
+
+  .board-grid-21x13 .cell {
+    width: var(--mobile-cell-w);
+    height: var(--mobile-cell-h);
+    font-size: 12px;
+  }
+
+  .board-grid-21x13 .futuristic-digit-svg {
+    width: 11px;
+    height: 14px;
+  }
+
+  .quantum-laser-svg,
+  .cell.omni-wrap-ghost {
+    display: none;
+  }
+
+  /* Compact BINARY 8x8 layout on Portrait Mobile */
+  .binary-stage-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    height: auto;
+    width: 100%;
+  }
+
+  .binary-grid-spacer {
+    display: none;
+  }
+
+  .binary-reference-panel {
+    order: 1;
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+    padding: 4px 6px;
+  }
+
+  .binary-decoder-table thead {
+    display: none;
+  }
+
+  .binary-decoder-table tbody {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px 6px;
+  }
+
+  .binary-decoder-table tr {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .binary-decoder-table td {
+    border-bottom: none;
+    padding: 2px;
+    font-size: 11px;
+  }
+
+  .binary-bit-slots {
+    order: 2;
+  }
+
+  .board-grid-8x8 {
+    order: 3;
+    --bin-cell-w: clamp(32px, calc((100vw - 64px) / 8), 38px);
+    grid-template-columns: repeat(8, var(--bin-cell-w));
+    grid-template-rows: repeat(8, var(--bin-cell-w));
+    gap: 3px;
+    padding: 8px;
+  }
+
+  .cell.binary-cell {
+    width: var(--bin-cell-w);
+    height: var(--bin-cell-w);
+  }
+
+  .mobile-cyber-numpad {
+    order: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+

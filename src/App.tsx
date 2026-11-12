@@ -162,7 +162,7 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isBackendOnline, setIsBackendOnline] = useState<boolean>(false);
   const [isMobileDevice, setIsMobileDevice] = useState<boolean>(() => detectMobilePhone());
-  const [dismissedMobileWarning, setDismissedMobileWarning] = useState<boolean>(false);
+  const [mobileNumpadLayout, setMobileNumpadLayout] = useState<'2x5' | '3x4'>('2x5');
 
   // Leaderboard state + 3-letter nick entry after completing the board
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -943,39 +943,22 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Zero-Lag Global Keydown + Keyup Engine with Anti-Bot Dwell Telemetry
-  useEffect(() => {
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const physCode = e.code || e.key.toLowerCase();
-      pressedPhysicalKeysRef.current.delete(physCode);
-      const tracked = activeKeyDownEventMapRef.current.get(physCode);
-      if (tracked) {
-        tracked.eventRef.downUpDurationMs = Math.max(
-          0,
-          Math.round((performance.now() - tracked.downTime) * 100) / 100
-        );
-        activeKeyDownEventMapRef.current.delete(physCode);
-      }
-    };
+  const releasePhysicalKey = useCallback((physCode: string) => {
+    pressedPhysicalKeysRef.current.delete(physCode);
+    const tracked = activeKeyDownEventMapRef.current.get(physCode);
+    if (tracked) {
+      tracked.eventRef.downUpDurationMs = Math.max(
+        0,
+        Math.round((performance.now() - tracked.downTime) * 100) / 100
+      );
+      activeKeyDownEventMapRef.current.delete(physCode);
+    }
+  }, []);
 
-    const handleWindowBlur = () => {
-      pressedPhysicalKeysRef.current.clear();
-      activeKeyDownEventMapRef.current.clear();
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (confirmDialog) {
-        if (e.key === 'Enter' || e.key.toLowerCase() === 'y') {
-          e.preventDefault();
-          confirmDialog.onConfirm();
-        } else if (e.key === 'Escape' || e.key.toLowerCase() === 'n') {
-          e.preventDefault();
-          setConfirmDialog(null);
-        }
-        return;
-      }
-
+  const triggerDigitInput = useCallback(
+    (mappedDigit: number, physCode: string, isTrusted: boolean) => {
       if (
+        confirmDialog ||
         isBindingsOpen ||
         isAuthOpen ||
         isWelcomeOpen ||
@@ -985,77 +968,6 @@ export const App: React.FC = () => {
         return;
       }
 
-      if (engineRef.current.isFinished && !hasSubmittedScore) {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          startNewGame();
-          return;
-        }
-        if (!currentUser) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            setIsAuthOpen(true);
-          }
-          return;
-        }
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          void handleSaveScoreToLeaderboard();
-          return;
-        }
-        if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
-          e.preventDefault();
-          setNickCursor((c) => Math.max(0, c - 1));
-          return;
-        }
-        if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          setNickCursor((c) => Math.min(2, c + 1));
-          return;
-        }
-        if (/^[a-zA-Z0-9]$/.test(e.key)) {
-          e.preventDefault();
-          const char = e.key.toUpperCase();
-          setNickLetters((prev) => {
-            const copy = [...prev];
-            copy[nickCursor] = char;
-            return copy;
-          });
-          setNickCursor((c) => Math.min(2, c + 1));
-          return;
-        }
-        return;
-      }
-
-      const physCode = e.code || e.key.toLowerCase();
-
-      if (e.repeat || pressedPhysicalKeysRef.current.has(physCode)) {
-        e.preventDefault();
-        return;
-      }
-
-      pressedPhysicalKeysRef.current.add(physCode);
-
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        requestRestartGame();
-        return;
-      }
-
-      const keyLower = e.key.toLowerCase();
-      const mappedDigit = keyToDigitMapRef.current.get(keyLower);
-
-      if (
-        mappedDigit !== undefined ||
-        e.key === ' ' ||
-        e.key === 'Tab' ||
-        e.key === '/' ||
-        e.key.startsWith('Arrow')
-      ) {
-        e.preventDefault();
-      }
-
-      if (mappedDigit === undefined) return;
       if (gameMode === 'BINARY' && mappedDigit !== 0 && mappedDigit !== 1) return;
 
       const eng = engineRef.current;
@@ -1064,12 +976,12 @@ export const App: React.FC = () => {
       const now = Math.round(performance.now() * 100) / 100;
 
       // Record keystroke telemetry event for server-side replay & anti-bot sentinel
-      // Initialize downUpDurationMs to -1 until keyup fires so un-released keys never fake constant dwell time
+      // Initialize downUpDurationMs to -1 until keyup/pointerup fires so un-released keys never fake constant dwell time
       const telemetryEv: KeystrokeTelemetryEvent = {
         digit: mappedDigit,
         clientTs: now,
         downUpDurationMs: -1,
-        isTrusted: Boolean(e.isTrusted),
+        isTrusted: Boolean(isTrusted),
         physKeyCode: physCode,
       };
       telemetryEventsRef.current.push(telemetryEv);
@@ -1079,7 +991,7 @@ export const App: React.FC = () => {
       });
 
       // ======================================================================
-      // MODE C: BINARY (7x4 Matrix, Digits 0-7, 3-Bit Binary Input [4][2][1])
+      // MODE C: BINARY (8x8 Matrix, Digits 0-7, 3-Bit Binary Input [4][2][1])
       // ======================================================================
       if (gameMode === 'BINARY') {
         const idx = eng.currentIndex;
@@ -1978,6 +1890,130 @@ export const App: React.FC = () => {
 
         triggerDeltaPopup(-penalty, '#ff2a54', 'MISS!');
       }
+    },
+    [
+      board,
+      gameMode,
+      activeTab,
+      confirmDialog,
+      isBindingsOpen,
+      isAuthOpen,
+      isWelcomeOpen,
+      isReleaseNotesOpen,
+      triggerBoardErrorFlash,
+      triggerQuantumLaserSweep,
+      triggerDeltaPopup,
+      updateLinearShieldVisibility,
+      syncOmniVisualState,
+    ]
+  );
+
+  // Zero-Lag Global Keydown + Keyup Engine with Anti-Bot Dwell Telemetry
+  useEffect(() => {
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const physCode = e.code || e.key.toLowerCase();
+      releasePhysicalKey(physCode);
+    };
+
+    const handleWindowBlur = () => {
+      pressedPhysicalKeysRef.current.clear();
+      activeKeyDownEventMapRef.current.clear();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (confirmDialog) {
+        if (e.key === 'Enter' || e.key.toLowerCase() === 'y') {
+          e.preventDefault();
+          confirmDialog.onConfirm();
+        } else if (e.key === 'Escape' || e.key.toLowerCase() === 'n') {
+          e.preventDefault();
+          setConfirmDialog(null);
+        }
+        return;
+      }
+
+      if (
+        isBindingsOpen ||
+        isAuthOpen ||
+        isWelcomeOpen ||
+        isReleaseNotesOpen ||
+        activeTab !== 'GAME'
+      ) {
+        return;
+      }
+
+      if (engineRef.current.isFinished && !hasSubmittedScore) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          startNewGame();
+          return;
+        }
+        if (!currentUser) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            setIsAuthOpen(true);
+          }
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void handleSaveScoreToLeaderboard();
+          return;
+        }
+        if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setNickCursor((c) => Math.max(0, c - 1));
+          return;
+        }
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          setNickCursor((c) => Math.min(2, c + 1));
+          return;
+        }
+        if (/^[a-zA-Z0-9]$/.test(e.key)) {
+          e.preventDefault();
+          const char = e.key.toUpperCase();
+          setNickLetters((prev) => {
+            const copy = [...prev];
+            copy[nickCursor] = char;
+            return copy;
+          });
+          setNickCursor((c) => Math.min(2, c + 1));
+          return;
+        }
+        return;
+      }
+
+      const physCode = e.code || e.key.toLowerCase();
+
+      if (e.repeat || pressedPhysicalKeysRef.current.has(physCode)) {
+        e.preventDefault();
+        return;
+      }
+
+      pressedPhysicalKeysRef.current.add(physCode);
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        requestRestartGame();
+        return;
+      }
+
+      const keyLower = e.key.toLowerCase();
+      const mappedDigit = keyToDigitMapRef.current.get(keyLower);
+
+      if (
+        mappedDigit !== undefined ||
+        e.key === ' ' ||
+        e.key === 'Tab' ||
+        e.key === '/' ||
+        e.key.startsWith('Arrow')
+      ) {
+        e.preventDefault();
+      }
+
+      if (mappedDigit === undefined) return;
+      triggerDigitInput(mappedDigit, physCode, Boolean(e.isTrusted));
     };
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
@@ -1989,25 +2025,20 @@ export const App: React.FC = () => {
       window.removeEventListener('blur', handleWindowBlur);
     };
   }, [
-    board,
-    gameMode,
-    activeTab,
     confirmDialog,
     isBindingsOpen,
     isAuthOpen,
     isWelcomeOpen,
     isReleaseNotesOpen,
+    activeTab,
     currentUser,
     hasSubmittedScore,
     nickCursor,
     startNewGame,
     requestRestartGame,
     handleSaveScoreToLeaderboard,
-    triggerBoardErrorFlash,
-    triggerQuantumLaserSweep,
-    triggerDeltaPopup,
-    updateLinearShieldVisibility,
-    syncOmniVisualState,
+    triggerDigitInput,
+    releasePhysicalKey,
   ]);
 
   const handleSaveSettings = (newBindings: KeyBindingsMap, newMode: GameMode) => {
@@ -2088,45 +2119,28 @@ export const App: React.FC = () => {
     setActiveTab('LEADERBOARD');
   };
 
-  return (
-    <div className="app-shell">
-      {/* MOBILE DEVICE WARNING OVERLAY (PC / DESKTOP KEYBOARD REQUIRED) */}
-      {isMobileDevice && !dismissedMobileWarning && (
-        <div className="mobile-pc-notice-overlay">
-          <div className="mobile-pc-notice-card">
-            <h1 className="brand-title-big">FIGRID</h1>
-            <h2 className="mobile-notice-heading">DESKTOP VERSION ONLY</h2>
-            <p className="mobile-notice-text">
-              FIGRID is a high-speed keyboard reflex game designed specifically for PC / Desktop
-              computers with a physical keyboard.
-            </p>
-            <p className="mobile-notice-sub">
-              Please open this page on a computer to play.
-            </p>
-            <div className="mobile-notice-actions">
-              <button
-                type="button"
-                className="btn-arcade gold"
-                onClick={() => {
-                  setDismissedMobileWarning(true);
-                  refreshLeaderboard();
-                  setActiveTab('LEADERBOARD');
-                }}
-              >
-                VIEW LEADERBOARD
-              </button>
-              <button
-                type="button"
-                className="btn-arcade small"
-                onClick={() => setDismissedMobileWarning(true)}
-              >
-                PREVIEW ANYWAY
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  const handleMobilePadDown = (digit: number, e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    const physCode = `TouchDigit${digit}`;
+    if (pressedPhysicalKeysRef.current.has(physCode)) return;
+    pressedPhysicalKeysRef.current.add(physCode);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(8);
+      } catch {
+        // ignore
+      }
+    }
+    triggerDigitInput(digit, physCode, Boolean(e.isTrusted));
+  };
 
+  const handleMobilePadUp = (digit: number) => {
+    const physCode = `TouchDigit${digit}`;
+    releasePhysicalKey(physCode);
+  };
+
+  return (
+    <div className={`app-shell ${isMobileDevice ? 'is-mobile-shell' : ''}`}>
       {activeTab === 'LEADERBOARD' ? (
         <LeaderboardView
           entries={leaderboard}
@@ -2413,7 +2427,7 @@ export const App: React.FC = () => {
             )}
           </section>
 
-          {/* RIGHT COLUMN: TOP HEADER BOX + BOTTOM SCORE & KPI BOX (FLUSH WITH BOARD TOP & BOTTOM) */}
+          {/* RIGHT COLUMN (DESKTOP) / TOP HUD (MOBILE): HEADER BOX + SCORE & KPI BOX */}
           <SpeedChartPanel
             gameMode={gameMode}
             hasStarted={hasStarted}
@@ -2439,6 +2453,76 @@ export const App: React.FC = () => {
             reinforcedHitCount={reinforcedHitCount}
             totalReinforcedCount={board.totalReinforcedCount}
           />
+
+          {/* VERTICAL MOBILE TOUCH CONTROLLER (CYBER-NUMPAD AT BOTTOM OF PORTRAIT SCREEN) */}
+          <section className="mobile-cyber-numpad" aria-label="Touch Digit Controller">
+            {gameMode === 'BINARY' ? (
+              <div className="mobile-binary-dual-pad">
+                {[0, 1].map((bitVal) => (
+                  <button
+                    key={bitVal}
+                    type="button"
+                    className={`mobile-pad-btn binary-pad-btn bit-${bitVal}`}
+                    onPointerDown={(e) => handleMobilePadDown(bitVal, e)}
+                    onPointerUp={() => handleMobilePadUp(bitVal)}
+                    onPointerCancel={() => handleMobilePadUp(bitVal)}
+                    onPointerLeave={() => handleMobilePadUp(bitVal)}
+                  >
+                    <span className="mobile-pad-digit">{bitVal}</span>
+                    <span className="mobile-pad-sub">BIT {bitVal}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="mobile-numpad-bar">
+                  <span className="mobile-numpad-title">CYBER-NUMPAD // 0MS TOUCH</span>
+                  <button
+                    type="button"
+                    className="mobile-layout-toggle-btn"
+                    onClick={() =>
+                      setMobileNumpadLayout((prev) => (prev === '2x5' ? '3x4' : '2x5'))
+                    }
+                  >
+                    GRID: {mobileNumpadLayout === '2x5' ? '2x5 SPLIT' : '3x4 NUMPAD'}
+                  </button>
+                </div>
+                {mobileNumpadLayout === '2x5' ? (
+                  <div className="mobile-numpad-grid layout-2x5">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className="mobile-pad-btn"
+                        onPointerDown={(e) => handleMobilePadDown(d, e)}
+                        onPointerUp={() => handleMobilePadUp(d)}
+                        onPointerCancel={() => handleMobilePadUp(d)}
+                        onPointerLeave={() => handleMobilePadUp(d)}
+                      >
+                        <span className="mobile-pad-digit">{d}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mobile-numpad-grid layout-3x4">
+                    {[7, 8, 9, 4, 5, 6, 1, 2, 3, 0].map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`mobile-pad-btn ${d === 0 ? 'zero-wide-btn' : ''}`}
+                        onPointerDown={(e) => handleMobilePadDown(d, e)}
+                        onPointerUp={() => handleMobilePadUp(d)}
+                        onPointerCancel={() => handleMobilePadUp(d)}
+                        onPointerLeave={() => handleMobilePadUp(d)}
+                      >
+                        <span className="mobile-pad-digit">{d}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
         </main>
       )}
 

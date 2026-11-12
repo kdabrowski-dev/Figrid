@@ -14,6 +14,7 @@ export const BINARY_COLS = 8;
 export const BINARY_TOTAL_CELLS = BINARY_ROWS * BINARY_COLS; // 64
 export const BINARY_SHIELD_COUNT = 10;
 export const BINARY_SHIELD_REVEAL_DISTANCE = 5;
+export const BINARY_TARGET_XOR7_PAIRS = 8;
 
 export const CURRENT_GAME_VERSION = '0.0.2';
 export const PREVIOUS_GAME_VERSION = '0.0.1';
@@ -348,8 +349,52 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
+function countXor7Pairs(digits: number[]): number {
+  let count = 0;
+  for (let i = 1; i < digits.length; i++) {
+    if ((digits[i - 1] ^ digits[i]) === 7) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function generateFairBinaryDigits(): number[] {
+  const basePool: number[] = [];
+  for (let d = 0; d < 8; d++) {
+    for (let k = 0; k < 8; k++) {
+      basePool.push(d);
+    }
+  }
+
+  for (let attempt = 0; attempt < 250; attempt++) {
+    const candidate = shuffleArray(basePool);
+    if (countXor7Pairs(candidate) === BINARY_TARGET_XOR7_PAIRS) {
+      return candidate;
+    }
+  }
+
+  const arr = shuffleArray(basePool);
+  for (let step = 0; step < 500; step++) {
+    const current = countXor7Pairs(arr);
+    if (current === BINARY_TARGET_XOR7_PAIRS) break;
+    const i = Math.floor(Math.random() * arr.length);
+    const j = Math.floor(Math.random() * arr.length);
+    if (i === j || arr[i] === arr[j]) continue;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    const next = countXor7Pairs(arr);
+    if (
+      Math.abs(next - BINARY_TARGET_XOR7_PAIRS) >
+      Math.abs(current - BINARY_TARGET_XOR7_PAIRS)
+    ) {
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+  return arr;
+}
+
 /**
- * Generates a fair 21x13 board.
+ * Generates a fair 21x13 board (or 8x8 in BINARY mode with balanced digits and exact 8 XOR-7 pairs).
  * - In LINEAR mode, sequences are placed horizontally along the linear reading path.
  * - In OMNI mode, sequences are placed BOTH horizontally AND vertically across the 21x13 grid!
  */
@@ -358,11 +403,12 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
     FAIR_BOARD_CONFIG.REINFORCED_IN_SEQUENCES + FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM;
 
   if (mode === 'BINARY') {
+    const fairDigits = generateFairBinaryDigits();
     const cells: CellData[] = new Array(BINARY_TOTAL_CELLS);
     for (let idx = 0; idx < BINARY_TOTAL_CELLS; idx++) {
       cells[idx] = {
         index: idx,
-        digit: Math.floor(Math.random() * 8), // 0..7 octal/3-bit digits
+        digit: fairDigits[idx],
         isReinforced: false,
         sequenceInstanceId: null,
         sequenceTier: null,
