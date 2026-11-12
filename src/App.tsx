@@ -874,10 +874,16 @@ export const App: React.FC = () => {
       }
     }
 
+    const usedTouchPad = telemetryEventsRef.current.some((ev) =>
+      String(ev.physKeyCode || '').toLowerCase().startsWith('touchdigit')
+    );
+    const isMobileRun = isMobileDevice || usedTouchPad;
+
     const verifyRes = await apiFinishGameSession({
       sessionToken: serverSessionTokenRef.current,
       nick,
       events: telemetryEventsRef.current,
+      isMobile: isMobileRun,
     });
 
     if (verifyRes.user) {
@@ -905,6 +911,7 @@ export const App: React.FC = () => {
       totalTimeSec,
       avgSpeedMs: avgSpeedMs ?? 0,
       mistakes: mistakesCount,
+      isMobile: isMobileRun,
       date: new Date().toISOString().slice(0, 10),
       username: currentUser.username,
       badges: verifyRes.user?.badges ?? currentUser.badges,
@@ -922,7 +929,7 @@ export const App: React.FC = () => {
       return updated;
     });
     setActiveTab('LEADERBOARD');
-  }, [hasSubmittedScore, nickLetters, gameMode, avgSpeedMs, mistakesCount, currentUser]);
+  }, [hasSubmittedScore, nickLetters, gameMode, avgSpeedMs, mistakesCount, currentUser, isMobileDevice]);
 
   // Smooth arcade score counter interpolation loop
   useEffect(() => {
@@ -2145,6 +2152,7 @@ export const App: React.FC = () => {
         <LeaderboardView
           entries={leaderboard}
           defaultMode={gameMode}
+          defaultIsMobile={isMobileDevice}
           currentUser={currentUser}
           isBackendOnline={isBackendOnline}
           onRefresh={refreshLeaderboard}

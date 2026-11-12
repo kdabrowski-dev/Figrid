@@ -2818,6 +2818,55 @@ body {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.leaderboard-platform-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.leaderboard-platform-btn {
+  background: #0c0f18;
+  border: 1.5px solid #242c42;
+  color: #94a3b8;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.leaderboard-platform-btn:hover {
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.leaderboard-platform-btn.active {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.1);
+  color: var(--accent-cyan);
+  box-shadow: inset 0 0 10px rgba(0, 240, 255, 0.18);
+}
+
+.leaderboard-platform-btn.mobile-plat.active {
+  border-color: #00ff9d;
+  background: rgba(0, 255, 157, 0.12);
+  color: #00ff9d;
+  box-shadow: inset 0 0 10px rgba(0, 255, 157, 0.2);
+}
+
+.mob-run-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 5px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6.5px;
+  color: #00ff9d;
+  background: rgba(0, 255, 157, 0.14);
+  border: 1px solid rgba(0, 255, 157, 0.45);
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
 .leaderboard-mode-tab.binary.active {
   border-color: #00ff9d;
   background: rgba(0, 255, 157, 0.1);

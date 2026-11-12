@@ -29,6 +29,7 @@ export interface LeaderboardEntry {
   totalTimeSec: number; // Total run time in seconds (e.g. 42.38)
   avgSpeedMs: number;
   mistakes: number;
+  isMobile?: boolean;
   date: string;
   username?: string;
   preferredMode?: GameMode;
@@ -69,10 +70,16 @@ export function appendLocalMyRun(entry: LeaderboardEntry): void {
  */
 export function getPersonalBestEntriesForMode(
   entries: LeaderboardEntry[],
-  mode: GameMode
+  mode: GameMode,
+  isMobilePlatform = false
 ): LeaderboardEntry[] {
   const modeRuns = entries
-    .filter((e) => e.mode === mode && (e.version || CURRENT_GAME_VERSION) === CURRENT_GAME_VERSION)
+    .filter(
+      (e) =>
+        e.mode === mode &&
+        Boolean(e.isMobile) === isMobilePlatform &&
+        (e.version || CURRENT_GAME_VERSION) === CURRENT_GAME_VERSION
+    )
     .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec);
 
   const seenPlayers = new Set<string>();
@@ -153,6 +160,7 @@ export function exportLeaderboardJsonFile(entries: LeaderboardEntry[]): void {
 interface LeaderboardViewProps {
   entries: LeaderboardEntry[];
   defaultMode: GameMode;
+  defaultIsMobile?: boolean;
   currentUser: UserProfile | null;
   isBackendOnline: boolean;
   onRefresh: () => void;
@@ -163,6 +171,7 @@ interface LeaderboardViewProps {
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   entries,
   defaultMode,
+  defaultIsMobile = false,
   currentUser,
   isBackendOnline,
   onRefresh,
@@ -170,6 +179,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   onBackToGame,
 }) => {
   const [selectedMode, setSelectedMode] = useState<GameMode>(defaultMode);
+  const [platformFilter, setPlatformFilter] = useState<'PC' | 'MOBILE'>(
+    defaultIsMobile ? 'MOBILE' : 'PC'
+  );
   const [boardScope, setBoardScope] = useState<'GLOBAL_PB' | 'MY_HALL_OF_FAME' | 'ARCHIVE_PODIUM'>(
     'GLOBAL_PB'
   );
@@ -217,18 +229,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     });
   }, [archiveVersionFilter]);
 
-  // 1. GLOBAL v0.0.2 PERSONAL BESTS PER MODE
+  const isMobileSelected = platformFilter === 'MOBILE';
+
+  // 1. GLOBAL v0.0.2 PERSONAL BESTS PER MODE (SEPARATED BY PC vs MOBILE)
   const globalLinearPBs = useMemo(
-    () => getPersonalBestEntriesForMode(entries, 'LINEAR'),
-    [entries]
+    () => getPersonalBestEntriesForMode(entries, 'LINEAR', isMobileSelected),
+    [entries, isMobileSelected]
   );
   const globalOmniPBs = useMemo(
-    () => getPersonalBestEntriesForMode(entries, 'OMNI'),
-    [entries]
+    () => getPersonalBestEntriesForMode(entries, 'OMNI', isMobileSelected),
+    [entries, isMobileSelected]
   );
   const globalBinaryPBs = useMemo(
-    () => getPersonalBestEntriesForMode(entries, 'BINARY'),
-    [entries]
+    () => getPersonalBestEntriesForMode(entries, 'BINARY', isMobileSelected),
+    [entries, isMobileSelected]
   );
   const activeGlobalPBs =
     selectedMode === 'OMNI'
@@ -281,25 +295,25 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const myLinearRuns = useMemo(
     () =>
       allMyRunsForVersion
-        .filter((e) => e.mode === 'LINEAR')
+        .filter((e) => e.mode === 'LINEAR' && Boolean(e.isMobile) === isMobileSelected)
         .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
-    [allMyRunsForVersion]
+    [allMyRunsForVersion, isMobileSelected]
   );
 
   const myOmniRuns = useMemo(
     () =>
       allMyRunsForVersion
-        .filter((e) => e.mode === 'OMNI')
+        .filter((e) => e.mode === 'OMNI' && Boolean(e.isMobile) === isMobileSelected)
         .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
-    [allMyRunsForVersion]
+    [allMyRunsForVersion, isMobileSelected]
   );
 
   const myBinaryRuns = useMemo(
     () =>
       allMyRunsForVersion
-        .filter((e) => e.mode === 'BINARY')
+        .filter((e) => e.mode === 'BINARY' && Boolean(e.isMobile) === isMobileSelected)
         .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
-    [allMyRunsForVersion]
+    [allMyRunsForVersion, isMobileSelected]
   );
 
   const activeMyRuns =
@@ -423,6 +437,28 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             ARCHIVE HALL OF FAME (PODIUM)
           </button>
         </div>
+
+        {/* SEPARATE PLATFORM SET SWITCHER: PC / KEYBOARD vs MOBILE / TOUCH */}
+        {boardScope !== 'ARCHIVE_PODIUM' && (
+          <div className="leaderboard-platform-tabs">
+            <button
+              type="button"
+              className={`leaderboard-platform-btn ${platformFilter === 'PC' ? 'active' : ''}`}
+              onClick={() => setPlatformFilter('PC')}
+            >
+              PC / KEYBOARD LEADERBOARD
+            </button>
+            <button
+              type="button"
+              className={`leaderboard-platform-btn mobile-plat ${
+                platformFilter === 'MOBILE' ? 'active' : ''
+              }`}
+              onClick={() => setPlatformFilter('MOBILE')}
+            >
+              MOBILE / TOUCH LEADERBOARD [MOB]
+            </button>
+          </div>
+        )}
 
         {/* SEPARATE MODE RANKING TABS (LINEAR vs OMNI-8 vs BINARY) */}
         <div className="leaderboard-mode-tabs three-cols">
@@ -715,6 +751,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                                 {entry.username && (
                                   <span className="col-pilot-sub">
                                     [{entry.username}]
+                                  </span>
+                                )}
+                                {entry.isMobile && (
+                                  <span className="mob-run-pill" title="Mobile Touch Run">
+                                    MOB
                                   </span>
                                 )}
                               </button>

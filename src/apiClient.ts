@@ -97,6 +97,7 @@ function mapRawScoreEntry(item: Record<string, unknown>): LeaderboardEntry {
     totalTimeSec: Number(item.totalTimeSec ?? 0),
     avgSpeedMs: Number(item.avgSpeedMs ?? 0),
     mistakes: Number(item.mistakes ?? 0),
+    isMobile: Boolean(item.isMobile),
     date: String(item.date ?? new Date().toISOString().slice(0, 10)),
     username: item.username ? String(item.username) : undefined,
     preferredMode: prefModeVal,
@@ -235,6 +236,7 @@ export async function apiFinishGameSession(payload: {
   sessionToken: string | null;
   nick: string;
   events: KeystrokeTelemetryEvent[];
+  isMobile?: boolean;
 }): Promise<FinishSessionResult> {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/game/finish`, {
