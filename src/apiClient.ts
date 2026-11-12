@@ -238,6 +238,7 @@ export async function apiFinishGameSession(payload: {
   nick: string;
   events: KeystrokeTelemetryEvent[];
   isMobile?: boolean;
+  isAutomated?: boolean;
 }): Promise<FinishSessionResult> {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/game/finish`, {

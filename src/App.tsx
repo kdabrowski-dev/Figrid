@@ -943,12 +943,24 @@ export const App: React.FC = () => {
     );
     const isMobileRun = isMobileDevice || usedTouchPad;
 
+    // Detect browser automation / CDP / headless flags
+    const isAutomatedBrowser = Boolean(
+      (navigator as any).webdriver ||
+      (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Array ||
+      (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Promise ||
+      (window as any).cdc_adoQpoasnfa76pfcZLmcfl_Symbol ||
+      (window as any).__puppeteer_evaluation_script__ ||
+      (window as any).__playwright ||
+      (window as any).__nightmare
+    );
+
     const verifyRes = await apiFinishGameSession({
       sessionToken: serverSessionTokenRef.current,
       nick,
       events: telemetryEventsRef.current,
       isMobile: isMobileRun,
-    });
+      isAutomated: isAutomatedBrowser,
+    } as any);
 
     if (verifyRes.user) {
       setCurrentUser(verifyRes.user);
