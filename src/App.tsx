@@ -220,7 +220,7 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isBackendOnline, setIsBackendOnline] = useState<boolean>(false);
   const [isMobileDevice, setIsMobileDevice] = useState<boolean>(() => detectMobilePhone());
-  const [mobileNumpadLayout, setMobileNumpadLayout] = useState<'2x5' | '3x4'>('2x5');
+  const [mobileNumpadLayout, setMobileNumpadLayout] = useState<'2x5' | '3x4'>('3x4');
 
   // Leaderboard state + 3-letter nick entry after completing the board
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);

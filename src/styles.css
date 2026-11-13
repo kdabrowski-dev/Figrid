@@ -3112,7 +3112,7 @@ body {
 }
 
 .mobile-pad-btn.zero-wide-btn {
-  grid-column: 1 / -1;
+  grid-column: 2;
 }
 
 .mobile-pad-btn:active {
