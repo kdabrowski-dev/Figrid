@@ -3,14 +3,91 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FIGRID</title>
+    <title>FIGRID — Cybernetic Speed Typing &amp; Reflex Matrix Game</title>
+    <meta
+      name="description"
+      content="FIGRID is a fast-paced cybernetic speed-typing and reflex matrix arcade game. Master LINEAR, OMNI-8, and BINARY 3-bit modes, unlock badges, and climb the global Hall of Fame."
+    />
+    <meta
+      name="keywords"
+      content="FIGRID, figrid.pl, speed typing game, reflex matrix game, reaction speed test, cybernetic arcade, omni-8, binary decoder game, typing benchmark"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="author" content="FIGRID" />
+    <meta name="theme-color" content="#070a10" />
+    <link rel="canonical" href="https://figrid.pl/" />
+
+    <!-- Open Graph / Social Sharing -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://figrid.pl/" />
+    <meta property="og:site_name" content="FIGRID" />
+    <meta property="og:title" content="FIGRID — Cybernetic Speed Typing &amp; Reflex Matrix Game" />
+    <meta
+      property="og:description"
+      content="Test your neural reflex and typing velocity across LINEAR, OMNI-8, and BINARY 8x8 modes. Compete on PC or Mobile in the server-verified Hall of Fame."
+    />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:url" content="https://figrid.pl/" />
+    <meta name="twitter:title" content="FIGRID — Cybernetic Speed Typing &amp; Reflex Matrix Game" />
+    <meta
+      name="twitter:description"
+      content="Fast-paced cybernetic speed-typing &amp; reflex matrix game. Compete in LINEAR, OMNI-8, and BINARY modes."
+    />
+
+    <!-- Structured Data (Schema.org VideoGame) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "FIGRID",
+        "alternateName": "FIGRID Speed Matrix",
+        "url": "https://figrid.pl/",
+        "description": "A cybernetic speed-typing and reflex matrix arcade game featuring LINEAR, OMNI-8, and BINARY modes with server-verified global leaderboards.",
+        "genre": ["Arcade", "Speed Typing", "Reflex", "Puzzle"],
+        "gamePlatform": ["Web Browser", "PC", "Mobile"],
+        "applicationCategory": "Game",
+        "operatingSystem": "Any",
+        "inLanguage": "en",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    </script>
+
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main style="max-width:720px;margin:40px auto;padding:20px;color:#e2e8f0;font-family:monospace;">
+        <h1>FIGRID — Cybernetic Speed Typing &amp; Reflex Matrix Game</h1>
+        <p>
+          FIGRID is a competitive browser-based speed-typing and neural reflex matrix game playable on
+          both desktop keyboards and mobile touch devices.
+        </p>
+        <h2>Game Modes</h2>
+        <ul>
+          <li><strong>LINEAR (21x13 Speed Matrix):</strong> Clear 273 cells sequentially at maximum velocity with reinforced 2x shields and secret sequences.</li>
+          <li><strong>OMNI-8 (Quantum Matrix):</strong> Navigate an 8-directional branching grid starting from the center cell.</li>
+          <li><strong>BINARY (8x8 3-Bit Decoder):</strong> Decode digits in real time using 3-bit binary input and XOR-7 overclock chains.</li>
+        </ul>
+      </main>
+    </div>
+    <noscript>
+      <p style="color:#e2e8f0;text-align:center;font-family:monospace;">
+        FIGRID requires JavaScript enabled to play the interactive matrix game.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
