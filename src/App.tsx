@@ -577,11 +577,10 @@ export const App: React.FC = () => {
           headNode.style.setProperty('--overlap-color-1', colorsAtHead[0]);
           headNode.style.setProperty('--overlap-color-2', colorsAtHead[1]);
         }
-        if (
-          br.shieldCrackedOnHead &&
-          currentBoard.cells[br.headIndex].isReinforced &&
-          eng.doneMask[br.headIndex] === 0
-        ) {
+        const isWaitingForSecondShieldHit = isInitialCellPending
+          ? currentBoard.cells[br.headIndex].isReinforced && br.shieldCrackedOnHead
+          : currentBoard.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead;
+        if (isWaitingForSecondShieldHit && eng.doneMask[br.headIndex] === 0) {
           headNode.classList.add('shield-cracked');
         }
         eng.omniVisualCells.add(br.headIndex);
@@ -621,13 +620,22 @@ export const App: React.FC = () => {
       );
     }
 
+    const uncrackedHeadSet = new Set<number>();
+    for (let b = 0; b < branches.length; b++) {
+      const br = branches[b];
+      const hc = currentBoard.cells[br.headIndex];
+      const needsHit = isInitialCellPending ? hc.isReinforced : (hc.isReinforced && !br.shieldCrackedOnHead);
+      if (needsHit) uncrackedHeadSet.add(br.headIndex);
+    }
+
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const cell = currentBoard.cells[i];
       if (!cell.isReinforced) continue;
       const node = cellNodesRef.current[i];
       if (!node) continue;
 
-      if (eng.doneMask[i] === 1) {
+      const isCompletedHeadOnly = headSet.has(i) && !uncrackedHeadSet.has(i) && !availableNeighborSet.has(i);
+      if (eng.doneMask[i] === 1 || isCompletedHeadOnly) {
         node.style.setProperty('--shield-alpha', '0');
         node.classList.remove('shield-approaching');
         continue;
@@ -1588,7 +1596,7 @@ export const App: React.FC = () => {
             const mergedVisited = new Set<number>();
             const headNeedsSecondHit =
               board.cells[headIdx].isReinforced &&
-              group.some((g) => !g.shieldCrackedOnHead);
+              group.every((g) => !g.shieldCrackedOnHead);
 
             for (const g of group) {
               quantumLaserTrails.push([...g.trail]);
@@ -1635,8 +1643,8 @@ export const App: React.FC = () => {
           }
         }
 
-        if (deduplicated.length > 12) {
-          deduplicated = deduplicated.slice(0, 12);
+        if (deduplicated.length > 32) {
+          deduplicated = deduplicated.slice(0, 32);
         }
 
         if (deduplicated.length === 1) {
