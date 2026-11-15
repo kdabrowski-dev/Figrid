@@ -317,6 +317,7 @@ export const App: React.FC = () => {
     peakKps: 0,
     sequencesHit: 0,
     reinforcedHit: 0,
+    crackedShieldCells: new Set<number>(),
     mistakes: 0,
     isFinished: false,
     laserCounter: 1,
@@ -773,6 +774,7 @@ export const App: React.FC = () => {
       eng.peakKps = 0;
       eng.sequencesHit = 0;
       eng.reinforcedHit = 0;
+      eng.crackedShieldCells.clear();
       eng.mistakes = 0;
       eng.isFinished = false;
 
@@ -1494,7 +1496,10 @@ export const App: React.FC = () => {
 
           if (headCell.isReinforced && !br.shieldCrackedOnHead) {
             if (headCell.digit === mappedDigit) {
-              completedShield2xOnStep = true;
+              if (!eng.crackedShieldCells.has(br.headIndex)) {
+                eng.crackedShieldCells.add(br.headIndex);
+                completedShield2xOnStep = true;
+              }
               nextBranches.push({
                 ...br,
                 shieldCrackedOnHead: true,
@@ -1572,6 +1577,7 @@ export const App: React.FC = () => {
         }
 
         let deduplicated: OmniBranch[] = [];
+        let newlyCommittedShields = 0;
         let maxQuantumMergeCount = 0;
         let maxQuantumMergedPathSteps = 0;
         const quantumLaserTrails: number[][] = [];
@@ -1608,6 +1614,7 @@ export const App: React.FC = () => {
                 if (eng.doneMask[tIdx] === 0) {
                   eng.doneMask[tIdx] = 1;
                   eng.clearedCount += 1;
+                  if (board.cells[tIdx].isReinforced) newlyCommittedShields += 1;
                   const cNode = cellNodesRef.current[tIdx];
                   if (cNode) {
                     cNode.className = 'cell done';
@@ -1660,6 +1667,7 @@ export const App: React.FC = () => {
             if (eng.doneMask[cellIdx] === 0) {
               eng.doneMask[cellIdx] = 1;
               eng.clearedCount += 1;
+              if (board.cells[cellIdx].isReinforced) newlyCommittedShields += 1;
               const cNode = cellNodesRef.current[cellIdx];
               if (cNode) {
                 cNode.className = 'cell done';
@@ -1689,6 +1697,7 @@ export const App: React.FC = () => {
               if (eng.doneMask[candidateCell] === 0) {
                 eng.doneMask[candidateCell] = 1;
                 eng.clearedCount += 1;
+                if (board.cells[candidateCell].isReinforced) newlyCommittedShields += 1;
                 const cNode = cellNodesRef.current[candidateCell];
                 if (cNode) {
                   cNode.className = 'cell done';
@@ -1715,8 +1724,8 @@ export const App: React.FC = () => {
 
         const multiplier = completedShield2xOnStep ? 2 : 1;
         let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
-        if (completedShield2xOnStep) {
-          eng.reinforcedHit += 1;
+        if (newlyCommittedShields > 0) {
+          eng.reinforcedHit += newlyCommittedShields;
           setReinforcedHitCount(eng.reinforcedHit);
         }
 
