@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import {
   GameMode,
   CURRENT_GAME_VERSION,
   PREVIOUS_GAME_VERSION,
+  V001_GAME_VERSION,
+  ARCHIVE_VERSIONS,
   V001_COMMIT_HASH,
 } from './gameEngine';
 import {
@@ -16,7 +18,8 @@ import {
   BadgeList,
   BadgeInspectModal,
   PilotProfileModal,
-  PilotProfileSummary,
+  InspectedPilotInfo,
+  getFeaturedBadgesForDisplay,
 } from './BadgeIcons';
 
 export interface LeaderboardEntry {
@@ -35,6 +38,7 @@ export interface LeaderboardEntry {
   username?: string;
   preferredMode?: GameMode;
   badges?: UserBadge[];
+  featuredBadges?: string[];
 }
 
 function formatEntryDateTime(entry: LeaderboardEntry): string {
@@ -79,19 +83,52 @@ export function appendLocalMyRun(entry: LeaderboardEntry): void {
  * Deduplicates entries for a given mode so ONLY each player's single Personal Best
  * (highest score, tie-broken by fastest totalTimeSec) appears on the Global Leaderboard!
  */
+export type RankingCategory = 'SCORE' | 'TIME' | 'PACE';
+
+export function filterAndSortRunsByCategory(
+  runs: LeaderboardEntry[],
+  mode: GameMode,
+  category: RankingCategory = 'SCORE'
+): LeaderboardEntry[] {
+  const isEnd = mode === 'LINEAR_ENDLESS' || mode === 'BINARY_ENDLESS';
+  const eligible = runs.filter((e) => {
+    if (category === 'TIME') return typeof e.totalTimeSec === 'number' && e.totalTimeSec > 0;
+    if (category === 'PACE') {
+      return typeof e.avgSpeedMs === 'number' && e.avgSpeedMs > 0 && (!isEnd || e.score >= 80);
+    }
+    return true;
+  });
+
+  return [...eligible].sort((a, b) => {
+    if (category === 'TIME') {
+      if (isEnd) {
+        return b.totalTimeSec - a.totalTimeSec || b.score - a.score;
+      }
+      return a.totalTimeSec - b.totalTimeSec || b.score - a.score;
+    }
+    if (category === 'PACE') {
+      return a.avgSpeedMs - b.avgSpeedMs || b.score - a.score;
+    }
+    return (
+      b.score - a.score ||
+      (isEnd ? b.totalTimeSec - a.totalTimeSec : a.totalTimeSec - b.totalTimeSec)
+    );
+  });
+}
+
 export function getPersonalBestEntriesForMode(
   entries: LeaderboardEntry[],
   mode: GameMode,
-  isMobilePlatform = false
+  isMobilePlatform = false,
+  category: RankingCategory = 'SCORE'
 ): LeaderboardEntry[] {
-  const modeRuns = entries
-    .filter(
-      (e) =>
-        e.mode === mode &&
-        Boolean(e.isMobile) === isMobilePlatform &&
-        (e.version || CURRENT_GAME_VERSION) === CURRENT_GAME_VERSION
-    )
-    .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec);
+  const rawModeRuns = entries.filter(
+    (e) =>
+      e.mode === mode &&
+      Boolean(e.isMobile) === isMobilePlatform &&
+      (e.version || CURRENT_GAME_VERSION) === CURRENT_GAME_VERSION
+  );
+  const modeRuns = filterAndSortRunsByCategory(rawModeRuns, mode, category);
 
   const seenPlayers = new Set<string>();
   const personalBests: LeaderboardEntry[] = [];
@@ -196,6 +233,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const [boardScope, setBoardScope] = useState<'GLOBAL_PB' | 'MY_HALL_OF_FAME' | 'ARCHIVE_PODIUM'>(
     'GLOBAL_PB'
   );
+  const [rankingCategory, setRankingCategory] = useState<RankingCategory>('SCORE');
   // Single version filter in MY HALL OF FAME (only one selected at a time!)
   const [personalVersionFilter, setPersonalVersionFilter] = useState<string>(CURRENT_GAME_VERSION);
   const [archiveVersionFilter, setArchiveVersionFilter] = useState<string>(PREVIOUS_GAME_VERSION);
@@ -203,7 +241,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const [serverMyRuns, setServerMyRuns] = useState<LeaderboardEntry[]>([]);
   const [archivePodiumEntries, setArchivePodiumEntries] = useState<LeaderboardEntry[]>([]);
   const [inspectedBadge, setInspectedBadge] = useState<UserBadge | null>(null);
-  const [inspectedPilot, setInspectedPilot] = useState<PilotProfileSummary | null>(null);
+  const [inspectedPilot, setInspectedPilot] = useState<InspectedPilotInfo | null>(null);
 
   const handleOpenPilotProfile = (entry: LeaderboardEntry) => {
     const isSelf =
@@ -213,7 +251,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     setInspectedPilot({
       nick: isSelf ? currentUser.nick : entry.nick,
       username: entry.username,
-      preferredMode: isSelf
+      favoriteMode: isSelf
         ? currentUser.preferredMode
         : entry.preferredMode || entry.mode,
       badges: isSelf ? currentUser.badges : entry.badges || [],
@@ -242,24 +280,36 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
   const isMobileSelected = platformFilter === 'MOBILE';
 
-  // 1. GLOBAL v0.0.2 PERSONAL BESTS PER MODE (SEPARATED BY PC vs MOBILE)
+  // 1. GLOBAL v0.0.3 PERSONAL BESTS PER MODE & CATEGORY (SEPARATED BY PC vs MOBILE)
   const globalLinearPBs = useMemo(
-    () => getPersonalBestEntriesForMode(entries, 'LINEAR', isMobileSelected),
-    [entries, isMobileSelected]
+    () => getPersonalBestEntriesForMode(entries, 'LINEAR', isMobileSelected, rankingCategory),
+    [entries, isMobileSelected, rankingCategory]
   );
   const globalOmniPBs = useMemo(
-    () => getPersonalBestEntriesForMode(entries, 'OMNI', isMobileSelected),
-    [entries, isMobileSelected]
+    () => getPersonalBestEntriesForMode(entries, 'OMNI', isMobileSelected, rankingCategory),
+    [entries, isMobileSelected, rankingCategory]
   );
   const globalBinaryPBs = useMemo(
-    () => getPersonalBestEntriesForMode(entries, 'BINARY', isMobileSelected),
-    [entries, isMobileSelected]
+    () => getPersonalBestEntriesForMode(entries, 'BINARY', isMobileSelected, rankingCategory),
+    [entries, isMobileSelected, rankingCategory]
+  );
+  const globalLinearEndlessPBs = useMemo(
+    () => getPersonalBestEntriesForMode(entries, 'LINEAR_ENDLESS', isMobileSelected, rankingCategory),
+    [entries, isMobileSelected, rankingCategory]
+  );
+  const globalBinaryEndlessPBs = useMemo(
+    () => getPersonalBestEntriesForMode(entries, 'BINARY_ENDLESS', isMobileSelected, rankingCategory),
+    [entries, isMobileSelected, rankingCategory]
   );
   const activeGlobalPBs =
     selectedMode === 'OMNI'
       ? globalOmniPBs
       : selectedMode === 'BINARY'
       ? globalBinaryPBs
+      : selectedMode === 'LINEAR_ENDLESS'
+      ? globalLinearEndlessPBs
+      : selectedMode === 'BINARY_ENDLESS'
+      ? globalBinaryEndlessPBs
       : globalLinearPBs;
 
   // 2. MY HALL OF FAME (Filtered by strictly ONE selected version: 0.0.2 or 0.0.1)
@@ -327,19 +377,49 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     [allMyRunsForVersion, isMobileSelected]
   );
 
+  const myLinearEndlessRuns = useMemo(
+    () =>
+      allMyRunsForVersion
+        .filter((e) => e.mode === 'LINEAR_ENDLESS' && Boolean(e.isMobile) === isMobileSelected)
+        .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
+    [allMyRunsForVersion, isMobileSelected]
+  );
+
+  const myBinaryEndlessRuns = useMemo(
+    () =>
+      allMyRunsForVersion
+        .filter((e) => e.mode === 'BINARY_ENDLESS' && Boolean(e.isMobile) === isMobileSelected)
+        .sort((a, b) => b.score - a.score || a.totalTimeSec - b.totalTimeSec),
+    [allMyRunsForVersion, isMobileSelected]
+  );
+
   const activeMyRuns =
     selectedMode === 'OMNI'
       ? myOmniRuns
       : selectedMode === 'BINARY'
       ? myBinaryRuns
+      : selectedMode === 'LINEAR_ENDLESS'
+      ? myLinearEndlessRuns
+      : selectedMode === 'BINARY_ENDLESS'
+      ? myBinaryEndlessRuns
       : myLinearRuns;
+  const sortedActiveMyRuns = useMemo(
+    () => filterAndSortRunsByCategory(activeMyRuns, selectedMode, rankingCategory),
+    [activeMyRuns, selectedMode, rankingCategory]
+  );
   const displayedEntries =
-    boardScope === 'GLOBAL_PB' ? activeGlobalPBs : activeMyRuns;
+    boardScope === 'GLOBAL_PB' ? activeGlobalPBs : sortedActiveMyRuns;
 
   // 3. ARCHIVE HALL OF FAME 5-PLACE PODIUM (Ordered 4 - 2 - 1 - 3 - 5)
   const activeArchiveTop5 = useMemo(() => {
     const modePodium = archivePodiumEntries
-      .filter((e) => e.mode === selectedMode)
+      .filter((e) => {
+        if (e.mode !== selectedMode) return false;
+        if (archiveVersionFilter !== V001_GAME_VERSION) {
+          return Boolean(e.isMobile) === isMobileSelected;
+        }
+        return true;
+      })
       .sort((a, b) => (a.podiumRank ?? 99) - (b.podiumRank ?? 99))
       .slice(0, 5);
 
@@ -355,13 +435,17 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       rank,
       entry: byRank.get(rank) || null,
     }));
-  }, [archivePodiumEntries, selectedMode]);
+  }, [archivePodiumEntries, selectedMode, archiveVersionFilter, isMobileSelected]);
 
   // Personal KPI summary for My Hall of Fame
   const myPersonalBestScore = activeMyRuns.length > 0 ? activeMyRuns[0].score : 0;
+  const isSelectedEndless =
+    selectedMode === 'LINEAR_ENDLESS' || selectedMode === 'BINARY_ENDLESS';
   const myBestTimeSec =
     activeMyRuns.length > 0
-      ? Math.min(...activeMyRuns.map((r) => r.totalTimeSec))
+      ? isSelectedEndless
+        ? Math.max(...activeMyRuns.map((r) => r.totalTimeSec))
+        : Math.min(...activeMyRuns.map((r) => r.totalTimeSec))
       : null;
   const myBestAvgPace =
     activeMyRuns.length > 0
@@ -369,7 +453,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
       : null;
 
   const modeDisplayName =
-    selectedMode === 'OMNI' ? 'OMNI-8' : selectedMode === 'BINARY' ? 'BINARY' : 'LINEAR';
+    selectedMode === 'OMNI'
+      ? 'OMNI-8'
+      : selectedMode === 'BINARY'
+      ? 'BINARY'
+      : selectedMode === 'LINEAR_ENDLESS'
+      ? 'LIN-ENDLESS'
+      : selectedMode === 'BINARY_ENDLESS'
+      ? 'BIN-ENDLESS'
+      : 'LINEAR';
 
   return (
     <section className="leaderboard-view">
@@ -450,7 +542,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         </div>
 
         {/* SEPARATE PLATFORM SET SWITCHER: PC / KEYBOARD vs MOBILE / TOUCH */}
-        {boardScope !== 'ARCHIVE_PODIUM' && (
+        {(boardScope !== 'ARCHIVE_PODIUM' || archiveVersionFilter !== V001_GAME_VERSION) && (
           <div className="leaderboard-platform-tabs">
             <button
               type="button"
@@ -471,8 +563,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </div>
         )}
 
-        {/* SEPARATE MODE RANKING TABS (LINEAR vs OMNI-8 vs BINARY) */}
-        <div className="leaderboard-mode-tabs three-cols">
+        {/* SEPARATE MODE RANKING TABS */}
+        <div className={`leaderboard-mode-tabs ${boardScope === 'ARCHIVE_PODIUM' ? 'three-cols' : 'five-cols'}`}>
           <button
             type="button"
             className={`leaderboard-mode-tab linear ${
@@ -521,7 +613,66 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 : `${globalBinaryPBs.length}`}
             </span>
           </button>
+          {boardScope !== 'ARCHIVE_PODIUM' && (
+            <>
+              <button
+                type="button"
+                className={`leaderboard-mode-tab linear ${
+                  selectedMode === 'LINEAR_ENDLESS' ? 'active' : ''
+                }`}
+                onClick={() => setSelectedMode('LINEAR_ENDLESS')}
+              >
+                <span className="lb-tab-title">LIN-END</span>
+                <span className="lb-tab-count">
+                  {boardScope === 'MY_HALL_OF_FAME'
+                    ? `${myLinearEndlessRuns.length}`
+                    : `${globalLinearEndlessPBs.length}`}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`leaderboard-mode-tab binary ${
+                  selectedMode === 'BINARY_ENDLESS' ? 'active' : ''
+                }`}
+                onClick={() => setSelectedMode('BINARY_ENDLESS')}
+              >
+                <span className="lb-tab-title">BIN-END</span>
+                <span className="lb-tab-count">
+                  {boardScope === 'MY_HALL_OF_FAME'
+                    ? `${myBinaryEndlessRuns.length}`
+                    : `${globalBinaryEndlessPBs.length}`}
+                </span>
+              </button>
+            </>
+          )}
         </div>
+
+        {/* RANKING CATEGORY TABS (OVERALL SCORE vs FASTEST TIME / SURVIVAL vs HIGHEST PACE) */}
+        {boardScope !== 'ARCHIVE_PODIUM' && (
+          <div className="leaderboard-category-tabs">
+            <button
+              type="button"
+              className={`lb-category-btn ${rankingCategory === 'SCORE' ? 'active' : ''}`}
+              onClick={() => setRankingCategory('SCORE')}
+            >
+              TOP SCORE
+            </button>
+            <button
+              type="button"
+              className={`lb-category-btn ${rankingCategory === 'TIME' ? 'active' : ''}`}
+              onClick={() => setRankingCategory('TIME')}
+            >
+              {isSelectedEndless ? 'LONGEST SURVIVAL' : 'FASTEST TIME'}
+            </button>
+            <button
+              type="button"
+              className={`lb-category-btn ${rankingCategory === 'PACE' ? 'active' : ''}`}
+              onClick={() => setRankingCategory('PACE')}
+            >
+              HIGHEST PACE (KPS)
+            </button>
+          </div>
+        )}
 
         {/* ===================================================================
             VIEW A: ARCHIVE HALL OF FAME (5-PLACE GRAPHICAL FUTURISTIC PODIUM)
@@ -530,15 +681,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div className="archive-podium-section">
             <div className="version-filter-bar">
               <span className="version-filter-label">ARCHIVED SEASON VERSION:</span>
-              <button
-                type="button"
-                className={`version-pill-btn ${
-                  archiveVersionFilter === PREVIOUS_GAME_VERSION ? 'active' : ''
-                }`}
-                onClick={() => setArchiveVersionFilter(PREVIOUS_GAME_VERSION)}
-              >
-                v{PREVIOUS_GAME_VERSION} (COMMIT {V001_COMMIT_HASH})
-              </button>
+              {ARCHIVE_VERSIONS.map((ver) => (
+                <button
+                  key={ver}
+                  type="button"
+                  className={`version-pill-btn ${archiveVersionFilter === ver ? 'active' : ''}`}
+                  onClick={() => setArchiveVersionFilter(ver)}
+                >
+                  {ver === V001_GAME_VERSION ? `v${ver} (COMMIT ${V001_COMMIT_HASH})` : `v${ver} (${isMobileSelected ? 'MOBILE' : 'PC'})`}
+                </button>
+              ))}
             </div>
 
             {/* 5-PLACE FUTURISTIC GRAPHICAL PODIUM: [ #4 ] [ #2 ] [ #1 ] [ #3 ] [ #5 ] */}
@@ -646,15 +798,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     >
                       v{CURRENT_GAME_VERSION} (CURRENT)
                     </button>
-                    <button
-                      type="button"
-                      className={`version-pill-btn ${
-                        personalVersionFilter === PREVIOUS_GAME_VERSION ? 'active' : ''
-                      }`}
-                      onClick={() => setPersonalVersionFilter(PREVIOUS_GAME_VERSION)}
-                    >
-                      v{PREVIOUS_GAME_VERSION} (ARCHIVE)
-                    </button>
+                    {ARCHIVE_VERSIONS.map((ver) => (
+                      <button
+                        key={ver}
+                        type="button"
+                        className={`version-pill-btn ${personalVersionFilter === ver ? 'active' : ''}`}
+                        onClick={() => setPersonalVersionFilter(ver)}
+                      >
+                        v{ver} (ARCHIVE)
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -673,7 +826,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     <span className="telemetry-val highlight-cyan">{activeMyRuns.length}</span>
                   </div>
                   <div className="personal-summary-item">
-                    <span className="telemetry-label">FASTEST CLEAR TIME</span>
+                    <span className="telemetry-label">{isSelectedEndless ? 'LONGEST SURVIVAL' : 'FASTEST CLEAR TIME'}</span>
                     <span className="telemetry-val">
                       {myBestTimeSec !== null ? `${myBestTimeSec.toFixed(2)}s` : '--'}
                     </span>
@@ -694,9 +847,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                   <tr>
                     <th>{boardScope === 'MY_HALL_OF_FAME' ? 'RUN #' : 'RANK'}</th>
                     <th>PILOT &amp; BADGES</th>
-                    <th>SCORE</th>
-                    <th>TOTAL TIME</th>
-                    <th>AVG PACE</th>
+                    <th className={rankingCategory === 'SCORE' ? 'active-sort-col' : ''}>
+                      SCORE
+                    </th>
+                    <th className={rankingCategory === 'TIME' ? 'active-sort-col' : ''}>
+                      {isSelectedEndless ? 'SURVIVAL TIME' : 'TOTAL TIME'}
+                    </th>
+                    <th className={rankingCategory === 'PACE' ? 'active-sort-col' : ''}>
+                      AVG PACE
+                    </th>
                     <th>MISTAKES</th>
                     <th>DATE</th>
                   </tr>
@@ -753,7 +912,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                                 )}
                               </button>
                               <BadgeList
-                                badges={entry.badges}
+                                badges={getFeaturedBadgesForDisplay(
+                                  entry.badges,
+                                  entry.featuredBadges
+                                )}
                                 size={20}
                                 onInspectBadge={(b) => setInspectedBadge(b)}
                               />

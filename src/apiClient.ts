@@ -13,7 +13,14 @@ const JWT_STORAGE_KEY = 'figrid_jwt_token_v1';
 
 export function getApiBaseUrl(): string {
   const envUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL;
-  return (envUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, '');
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
+    return 'http://127.0.0.1:5000';
+  }
+  return DEFAULT_BACKEND_URL.replace(/\/+$/, '');
 }
 
 export interface UserProfile {
@@ -23,6 +30,7 @@ export interface UserProfile {
   preferredMode: GameMode;
   keyBindings: KeyBindingsMap;
   badges?: UserBadge[];
+  featuredBadges?: string[];
   createdAt?: string | null;
 }
 
@@ -81,11 +89,16 @@ function mapRawBadges(rawBadges: unknown): UserBadge[] {
 
 function mapRawScoreEntry(item: Record<string, unknown>): LeaderboardEntry {
   const rawMode = String(item.mode ?? 'LINEAR').toUpperCase();
-  const modeVal: GameMode =
-    rawMode === 'OMNI' ? 'OMNI' : rawMode === 'BINARY' ? 'BINARY' : 'LINEAR';
+  const normalizeMode = (val: string): GameMode => {
+    if (val === 'OMNI') return 'OMNI';
+    if (val === 'BINARY') return 'BINARY';
+    if (val === 'LINEAR_ENDLESS') return 'LINEAR_ENDLESS';
+    if (val === 'BINARY_ENDLESS') return 'BINARY_ENDLESS';
+    return 'LINEAR';
+  };
+  const modeVal: GameMode = normalizeMode(rawMode);
   const rawPref = String(item.preferredMode ?? 'LINEAR').toUpperCase();
-  const prefModeVal: GameMode =
-    rawPref === 'OMNI' ? 'OMNI' : rawPref === 'BINARY' ? 'BINARY' : 'LINEAR';
+  const prefModeVal: GameMode = normalizeMode(rawPref);
 
   return {
     id: String(item.id ?? `score-${Math.random()}`),
@@ -103,6 +116,9 @@ function mapRawScoreEntry(item: Record<string, unknown>): LeaderboardEntry {
     username: item.username ? String(item.username) : undefined,
     preferredMode: prefModeVal,
     badges: mapRawBadges(item.badges),
+    featuredBadges: Array.isArray(item.featuredBadges)
+      ? item.featuredBadges.map((c: unknown) => String(c))
+      : undefined,
   };
 }
 
@@ -172,6 +188,7 @@ export async function apiUpdateUserSettings(payload: {
   nick?: string;
   preferredMode?: GameMode;
   keyBindings?: KeyBindingsMap;
+  featuredBadges?: string[];
 }): Promise<UserProfile | null> {
   const token = getStoredToken();
   if (!token) return null;
@@ -237,6 +254,7 @@ export async function apiFinishGameSession(payload: {
   sessionToken: string | null;
   nick: string;
   events: KeystrokeTelemetryEvent[];
+  endlessBoard?: { cells: unknown[]; sequences: unknown[] };
   isMobile?: boolean;
   isAutomated?: boolean;
 }): Promise<FinishSessionResult> {

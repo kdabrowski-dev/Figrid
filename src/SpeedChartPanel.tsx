@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { GameMode, TOTAL_CELLS, BINARY_TOTAL_CELLS, CURRENT_GAME_VERSION } from './gameEngine';
 import { UserProfile } from './apiClient';
-import { UserBadge, BadgeList, BadgeInspectModal } from './BadgeIcons';
+import {
+  UserBadge,
+  BadgeList,
+  BadgeInspectModal,
+  getFeaturedBadgesForDisplay,
+} from './BadgeIcons';
 
 export interface SpeedSample {
   step: number;
@@ -19,6 +24,7 @@ interface SpeedChartPanelProps {
   currentUser: UserProfile | null;
   progressNodeRef: React.RefObject<HTMLSpanElement>;
   onQuickToggleMode: () => void;
+  onToggleEndless: () => void;
   onOpenAuth: () => void;
   onOpenLeaderboard: () => void;
   onOpenSettings: () => void;
@@ -41,6 +47,8 @@ interface SpeedChartPanelProps {
   quantumMergesCount: number;
   reinforcedHitCount: number;
   totalReinforcedCount: number;
+  clocksHitCount: number;
+  totalClocksCount: number;
 }
 
 export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
@@ -49,6 +57,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
   currentUser,
   progressNodeRef,
   onQuickToggleMode,
+  onToggleEndless,
   onOpenAuth,
   onOpenLeaderboard,
   onOpenSettings,
@@ -67,11 +76,15 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
   quantumMergesCount,
   reinforcedHitCount,
   totalReinforcedCount,
+  clocksHitCount,
+  totalClocksCount,
 }) => {
   const [inspectedBadge, setInspectedBadge] = useState<UserBadge | null>(null);
   const currentKps = lastSpeedMs && lastSpeedMs > 0 ? (1000 / lastSpeedMs).toFixed(1) : '0.0';
   const avgKps = avgSpeedMs && avgSpeedMs > 0 ? (1000 / avgSpeedMs).toFixed(1) : '0.0';
-  const totalBoardCells = gameMode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
+  const isEndlessMode = gameMode === 'LINEAR_ENDLESS' || gameMode === 'BINARY_ENDLESS';
+  const isBinaryLike = gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS';
+  const totalBoardCells = isBinaryLike ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
 
   return (
     <aside className="side-panel">
@@ -81,7 +94,7 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
           <button
             type="button"
             className="btn-version-tag"
-            title="View v0.0.2 Release Notes"
+            title={`View v${CURRENT_GAME_VERSION} Release Notes`}
             onClick={(e) => {
               e.currentTarget.blur();
               onOpenReleaseNotes();
@@ -95,6 +108,10 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             <span className="brand-subtitle">
               {gameMode === 'OMNI'
                 ? '21x13 OMNI-DIRECTIONAL QUANTUM MATRIX'
+                : gameMode === 'BINARY_ENDLESS'
+                ? '8-COL ENDLESS BINARY CHASER'
+                : gameMode === 'LINEAR_ENDLESS'
+                ? '13-COL ENDLESS LINEAR CHASER'
                 : gameMode === 'BINARY'
                 ? '8x8 BINARY 3-BIT DECODER MATRIX'
                 : '21x13 SPEED MATRIX'}
@@ -116,24 +133,39 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
 
         <div className="right-header-status-row">
           <div className="progress-box">
-            <span className="hud-label">PROGRESS</span>
+            <span className="hud-label">{isEndlessMode ? 'CLEARED' : 'PROGRESS'}</span>
             <span ref={progressNodeRef} className="hud-progress-val">
-              0 / {totalBoardCells}
+              {isEndlessMode ? '0' : `0 / ${totalBoardCells}`}
             </span>
           </div>
-          <button
-            type="button"
-            className={`btn-arcade small ${
-              gameMode === 'OMNI' ? 'gold' : gameMode === 'BINARY' ? 'magenta' : 'cyan'
-            }`}
-            title="Switch between Linear, Omni-8, and Binary 8x8 mode"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onQuickToggleMode();
-            }}
-          >
-            MODE: {gameMode === 'OMNI' ? 'OMNI-8' : gameMode === 'BINARY' ? 'BINARY' : 'LINEAR'}
-          </button>
+          <div className="mode-toggle-pair">
+            <button
+              type="button"
+              className={`btn-arcade small ${
+                gameMode === 'OMNI' ? 'gold' : isBinaryLike ? 'magenta' : 'cyan'
+              }`}
+              title="Switch between Linear, Omni-8, and Binary mode"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onQuickToggleMode();
+              }}
+            >
+              MODE: {gameMode === 'OMNI' ? 'OMNI-8' : isBinaryLike ? 'BINARY' : 'LINEAR'}
+            </button>
+            {gameMode !== 'OMNI' && (
+              <button
+                type="button"
+                className={`btn-arcade small endless-pill-btn ${isEndlessMode ? 'active-endless' : ''}`}
+                title="Toggle Endless Chaser modifier (5-row sliding focus + Chaser)"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onToggleEndless();
+                }}
+              >
+                {isEndlessMode ? 'ENDLESS: ON' : 'ENDLESS'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="right-header-actions-grid">
@@ -148,7 +180,10 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             <span>{currentUser ? currentUser.username : 'LOGIN'}</span>
             {currentUser && currentUser.badges && currentUser.badges.length > 0 && (
               <BadgeList
-                badges={currentUser.badges.slice(0, 3)}
+                badges={getFeaturedBadgesForDisplay(
+                  currentUser.badges,
+                  currentUser.featuredBadges
+                )}
                 size={16}
                 onInspectBadge={(b) => setInspectedBadge(b)}
               />
@@ -228,7 +263,13 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
           <div className="telemetry-item">
             <span className="telemetry-label">SHIELDS CLEARED</span>
             <span className="telemetry-val highlight-cyan">
-              {reinforcedHitCount} / {totalReinforcedCount}
+              {isEndlessMode ? `${reinforcedHitCount}` : `${reinforcedHitCount} / ${totalReinforcedCount}`}
+            </span>
+          </div>
+          <div className="telemetry-item">
+            <span className="telemetry-label">CHRONO CLOCKS</span>
+            <span className="telemetry-val highlight-gold">
+              {isEndlessMode ? `${clocksHitCount}` : `${clocksHitCount} / ${totalClocksCount}`}
             </span>
           </div>
           <div className="telemetry-item">
@@ -239,14 +280,14 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             <span className="telemetry-label">
               {gameMode === 'OMNI'
                 ? 'QUANTUM MERGES'
-                : gameMode === 'BINARY'
+                : isBinaryLike
                 ? 'BINARY OVERCLOCKS'
                 : 'SECRET SEQUENCES'}
             </span>
             <span className="telemetry-val highlight-gold">
               {gameMode === 'OMNI'
                 ? `${quantumMergesCount}`
-                : gameMode === 'BINARY'
+                : isBinaryLike || isEndlessMode
                 ? `${sequencesHitCount}`
                 : `${sequencesHitCount} / ${totalSequencesCount}`}
             </span>

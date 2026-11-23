@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // FIGRID // Fair & Deterministic-Budget Board Generator + Omni-8 Engine
 // ============================================================================
 
@@ -15,12 +15,16 @@ export const BINARY_TOTAL_CELLS = BINARY_ROWS * BINARY_COLS; // 64
 export const BINARY_SHIELD_COUNT = 10;
 export const BINARY_SHIELD_REVEAL_DISTANCE = 5;
 export const BINARY_TARGET_XOR7_PAIRS = 8;
+export const CLOCK_COUNT = 5;
+export const BINARY_CLOCK_COUNT = 3;
 
-export const CURRENT_GAME_VERSION = '0.0.2';
-export const PREVIOUS_GAME_VERSION = '0.0.1';
+export const CURRENT_GAME_VERSION = '0.0.3';
+export const PREVIOUS_GAME_VERSION = '0.0.2';
+export const V001_GAME_VERSION = '0.0.1';
+export const ARCHIVE_VERSIONS = ['0.0.2', '0.0.1'] as const;
 export const V001_COMMIT_HASH = '73a71f0';
 
-export type GameMode = 'LINEAR' | 'OMNI' | 'BINARY';
+export type GameMode = 'LINEAR' | 'OMNI' | 'BINARY' | 'LINEAR_ENDLESS' | 'BINARY_ENDLESS';
 export type SequenceTier = 'SHORT' | 'MEDIUM' | 'LONG' | 'PHI';
 
 export interface QuantumMergeTierInfo {
@@ -327,6 +331,8 @@ export interface CellData {
   index: number;
   digit: number;
   isReinforced: boolean;
+  isClock?: boolean;
+  clockDigits?: [number, number, number, number];
   sequenceInstanceId: number | null;
   sequenceTier: SequenceTier | null;
   isSequenceStart: boolean;
@@ -338,6 +344,7 @@ export interface GeneratedBoard {
   sequences: PlacedSequenceInstance[];
   totalTheoreticalSeqBonus: number;
   totalReinforcedCount: number;
+  totalClockCount?: number;
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -402,6 +409,27 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
   const totalShields =
     FAIR_BOARD_CONFIG.REINFORCED_IN_SEQUENCES + FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM;
 
+  if (mode === 'LINEAR_ENDLESS' || mode === 'BINARY_ENDLESS') {
+    const initialCells: CellData[] = [];
+    const initialSequences: PlacedSequenceInstance[] = [];
+    let nextSeqId = 1;
+    for (let r = 0; r < 5; r++) {
+      const genRow = generateEndlessRow(r, mode, nextSeqId);
+      initialCells.push(...genRow.cells);
+      if (genRow.sequence) {
+        initialSequences.push(genRow.sequence);
+        nextSeqId += 1;
+      }
+    }
+    return {
+      cells: initialCells,
+      sequences: initialSequences,
+      totalTheoreticalSeqBonus: 0,
+      totalReinforcedCount: initialCells.filter((c) => c.isReinforced).length,
+      totalClockCount: initialCells.filter((c) => c.isClock).length,
+    };
+  }
+
   if (mode === 'BINARY') {
     const fairDigits = generateFairBinaryDigits();
     const cells: CellData[] = new Array(BINARY_TOTAL_CELLS);
@@ -422,9 +450,20 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
       candidateIndices.push(idx);
     }
 
-    const chosenReinforced = shuffleArray(candidateIndices).slice(0, BINARY_SHIELD_COUNT);
+    const shuffledBin = shuffleArray(candidateIndices);
+    const chosenReinforced = shuffledBin.slice(0, BINARY_SHIELD_COUNT);
     for (const idx of chosenReinforced) {
       cells[idx].isReinforced = true;
+    }
+    const chosenClocks = shuffledBin.slice(BINARY_SHIELD_COUNT, BINARY_SHIELD_COUNT + BINARY_CLOCK_COUNT);
+    for (const idx of chosenClocks) {
+      cells[idx].isClock = true;
+      cells[idx].clockDigits = [
+        Math.floor(Math.random() * 8),
+        Math.floor(Math.random() * 8),
+        Math.floor(Math.random() * 8),
+        Math.floor(Math.random() * 8),
+      ];
     }
 
     return {
@@ -432,11 +471,12 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
       sequences: [],
       totalTheoreticalSeqBonus: 0,
       totalReinforcedCount: BINARY_SHIELD_COUNT,
+      totalClockCount: BINARY_CLOCK_COUNT,
     };
   }
 
   // In v0.0.2, OMNI-8 mode has NO secret sequences at all!
-  if (mode === 'OMNI') {
+  if ((mode as GameMode) === 'OMNI') {
     const cells: CellData[] = new Array(TOTAL_CELLS);
     for (let idx = 0; idx < TOTAL_CELLS; idx++) {
       cells[idx] = {
@@ -457,9 +497,20 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
       }
     }
 
-    const chosenReinforced = shuffleArray(candidateIndices).slice(0, totalShields);
+    const shuffledOmni = shuffleArray(candidateIndices);
+    const chosenReinforced = shuffledOmni.slice(0, totalShields);
     for (const idx of chosenReinforced) {
       cells[idx].isReinforced = true;
+    }
+    const chosenOmniClocks = shuffledOmni.slice(totalShields, totalShields + CLOCK_COUNT);
+    for (const idx of chosenOmniClocks) {
+      cells[idx].isClock = true;
+      cells[idx].clockDigits = [
+        Math.floor(Math.random() * 10),
+        Math.floor(Math.random() * 10),
+        Math.floor(Math.random() * 10),
+        Math.floor(Math.random() * 10),
+      ];
     }
 
     return {
@@ -467,6 +518,7 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
       sequences: [],
       totalTheoreticalSeqBonus: 0,
       totalReinforcedCount: totalShields,
+      totalClockCount: CLOCK_COUNT,
     };
   }
 
@@ -495,7 +547,7 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
   const orderedForPlacement = [...selectedPatterns].sort((a, b) => b.digits.length - a.digits.length);
 
   const occupied = new Uint8Array(TOTAL_CELLS);
-  if (mode === 'OMNI') {
+  if ((mode as GameMode) === 'OMNI') {
     // Reserve the center starting cell in OMNI mode so sequences don't get split by the spawn point
     occupied[OMNI_CENTER_INDEX] = 1;
   }
@@ -507,7 +559,7 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
     const len = pattern.digits.length;
 
     // In OMNI mode, alternate / randomize between VERTICAL and HORIZONTAL sequence placement!
-    const tryVerticalFirst = mode === 'OMNI' && (i % 2 === 0 || Math.random() < 0.55);
+    const tryVerticalFirst = (mode as GameMode) === 'OMNI' && (i % 2 === 0 || Math.random() < 0.55);
 
     const candidatePlacements: { indices: number[]; orientation: 'HORIZONTAL' | 'VERTICAL' }[] = [];
 
@@ -533,7 +585,7 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
           if (canFit && indices.length === len) {
             candidatePlacements.push({ indices, orientation: 'VERTICAL' });
             // In OMNI mode, also allow bottom-to-top vertical orientation
-            if (mode === 'OMNI') {
+            if ((mode as GameMode) === 'OMNI') {
               candidatePlacements.push({
                 indices: [...indices].reverse(),
                 orientation: 'VERTICAL',
@@ -545,7 +597,7 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
     };
 
     const collectHorizontalCandidates = () => {
-      if (mode === 'OMNI') {
+      if ((mode as GameMode) === 'OMNI') {
         // Strictly within a row or wrapping cleanly horizontally in OMNI mode
         if (len <= COLS) {
           for (let r = 0; r < ROWS; r++) {
@@ -595,7 +647,7 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
       }
     };
 
-    if (mode === 'OMNI') {
+    if ((mode as GameMode) === 'OMNI') {
       if (tryVerticalFirst) {
         collectVerticalCandidates();
         if (candidatePlacements.length === 0) collectHorizontalCandidates();
@@ -684,12 +736,26 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
     cells[idx].isReinforced = true;
   }
 
-  const chosenRandReinforced = shuffleArray(nonSequenceIndices).slice(
+  const shuffledNonSeq = shuffleArray(nonSequenceIndices);
+  const chosenRandReinforced = shuffledNonSeq.slice(
     0,
     FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM
   );
   for (const idx of chosenRandReinforced) {
     cells[idx].isReinforced = true;
+  }
+  const chosenLinearClocks = shuffledNonSeq.slice(
+    FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM,
+    FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM + CLOCK_COUNT
+  );
+  for (const idx of chosenLinearClocks) {
+    cells[idx].isClock = true;
+    cells[idx].clockDigits = [
+      Math.floor(Math.random() * 10),
+      Math.floor(Math.random() * 10),
+      Math.floor(Math.random() * 10),
+      Math.floor(Math.random() * 10),
+    ];
   }
 
   const totalTheoreticalSeqBonus = placedInstances.reduce(
@@ -703,7 +769,114 @@ export function generateFairBoard(mode: GameMode = 'LINEAR'): GeneratedBoard {
     totalTheoreticalSeqBonus,
     totalReinforcedCount:
       FAIR_BOARD_CONFIG.REINFORCED_IN_SEQUENCES + FAIR_BOARD_CONFIG.REINFORCED_IN_RANDOM,
+    totalClockCount: CLOCK_COUNT,
   };
+}
+
+export type EndlessRowPaceType = 'WARMUP' | 'SURGE' | 'CRYO' | 'HYPER' | 'OVERDRIVE' | 'STASIS';
+
+export interface EndlessRowProfile {
+  paceType: EndlessRowPaceType;
+  label: string;
+  speedMult: number;
+  colorClass: string;
+  accentHex: string;
+}
+
+const HARDCODED_ENDLESS_WAVE: Array<EndlessRowProfile> = [
+  { paceType: 'WARMUP', label: 'STEADY', speedMult: 0.98, colorClass: 'endless-row-warmup', accentHex: '#00f0ff' },
+  { paceType: 'WARMUP', label: 'STEADY', speedMult: 1.06, colorClass: 'endless-row-warmup', accentHex: '#00f0ff' },
+  { paceType: 'SURGE', label: 'SURGE', speedMult: 1.24, colorClass: 'endless-row-surge', accentHex: '#f59e0b' },
+  { paceType: 'CRYO', label: 'CRYO SLOW', speedMult: 0.5, colorClass: 'endless-row-cryo', accentHex: '#38bdf8' },
+  { paceType: 'HYPER', label: 'HYPER', speedMult: 1.42, colorClass: 'endless-row-hyper', accentHex: '#ff6d00' },
+  { paceType: 'HYPER', label: 'HYPER+', speedMult: 1.54, colorClass: 'endless-row-hyper', accentHex: '#ff6d00' },
+  { paceType: 'STASIS', label: 'DEEP CRYO', speedMult: 0.38, colorClass: 'endless-row-stasis', accentHex: '#2dd4bf' },
+  { paceType: 'OVERDRIVE', label: 'OVERDRIVE', speedMult: 1.68, colorClass: 'endless-row-overdrive', accentHex: '#ff2a54' },
+  { paceType: 'SURGE', label: 'SURGE', speedMult: 1.3, colorClass: 'endless-row-surge', accentHex: '#f59e0b' },
+  { paceType: 'CRYO', label: 'CRYO SLOW', speedMult: 0.46, colorClass: 'endless-row-cryo', accentHex: '#38bdf8' },
+  { paceType: 'OVERDRIVE', label: 'OVERDRIVE+', speedMult: 1.82, colorClass: 'endless-row-overdrive', accentHex: '#ff2a54' },
+  { paceType: 'STASIS', label: 'STASIS', speedMult: 0.35, colorClass: 'endless-row-stasis', accentHex: '#2dd4bf' },
+];
+
+export function getEndlessRowProfile(rowIndex: number): EndlessRowProfile {
+  if (rowIndex <= 1) {
+    return { paceType: 'WARMUP', label: 'WARMUP', speedMult: 0.85, colorClass: 'endless-row-warmup', accentHex: '#00f0ff' };
+  }
+  const cycleIdx = (rowIndex - 2) % HARDCODED_ENDLESS_WAVE.length;
+  const base = HARDCODED_ENDLESS_WAVE[cycleIdx];
+  return { ...base };
+}
+
+export function generateEndlessRow(
+  rowIndex: number,
+  mode: 'LINEAR_ENDLESS' | 'BINARY_ENDLESS',
+  nextSeqIdStart: number
+): { cells: CellData[]; sequence: PlacedSequenceInstance | null } {
+  const colsCount = mode === 'BINARY_ENDLESS' ? BINARY_COLS : COLS;
+  const maxDigit = mode === 'BINARY_ENDLESS' ? 8 : 10;
+  const baseIdx = rowIndex * colsCount;
+  const rowCells: CellData[] = [];
+  for (let c = 0; c < colsCount; c++) {
+    rowCells.push({
+      index: baseIdx + c,
+      digit: Math.floor(Math.random() * maxDigit),
+      isReinforced: false,
+      isClock: false,
+      sequenceInstanceId: null,
+      sequenceTier: null,
+      isSequenceStart: false,
+      isSequenceEnd: false,
+    });
+  }
+
+  let spawnedSeq: PlacedSequenceInstance | null = null;
+  if (mode === 'LINEAR_ENDLESS' && rowIndex >= 1 && Math.random() < 0.45) {
+    const candidates = SEQUENCE_CATALOG.filter((p) => p.digits.length <= 6);
+    const pat = candidates[Math.floor(Math.random() * candidates.length)];
+    const startCol = Math.floor(Math.random() * (colsCount - pat.digits.length + 1));
+    const cellIndices: number[] = [];
+    for (let k = 0; k < pat.digits.length; k++) {
+      const cIdx = baseIdx + startCol + k;
+      cellIndices.push(cIdx);
+      rowCells[startCol + k].digit = pat.digits[k];
+      rowCells[startCol + k].sequenceInstanceId = nextSeqIdStart;
+      rowCells[startCol + k].sequenceTier = pat.tier;
+      rowCells[startCol + k].isSequenceStart = k === 0;
+      rowCells[startCol + k].isSequenceEnd = k === pat.digits.length - 1;
+    }
+    spawnedSeq = {
+      instanceId: nextSeqIdStart,
+      pattern: pat,
+      startIndex: cellIndices[0],
+      endIndex: cellIndices[cellIndices.length - 1],
+      cellIndices,
+      orientation: 'HORIZONTAL',
+    };
+  } else if (mode === 'BINARY_ENDLESS' && rowIndex >= 1 && Math.random() < 0.45) {
+    const pairCol = Math.floor(Math.random() * (colsCount - 1));
+    rowCells[pairCol + 1].digit = rowCells[pairCol].digit ^ 7;
+  }
+
+  if (rowIndex >= 1) {
+    const shieldCol = Math.floor(Math.random() * colsCount);
+    if (Math.random() < 0.65) {
+      rowCells[shieldCol].isReinforced = true;
+    }
+    if (Math.random() < 0.25) {
+      const clockCol = (shieldCol + 3) % colsCount;
+      if (!rowCells[clockCol].isReinforced && rowCells[clockCol].sequenceInstanceId === null) {
+        rowCells[clockCol].isClock = true;
+        rowCells[clockCol].clockDigits = [
+          Math.floor(Math.random() * maxDigit),
+          Math.floor(Math.random() * maxDigit),
+          Math.floor(Math.random() * maxDigit),
+          Math.floor(Math.random() * maxDigit),
+        ];
+      }
+    }
+  }
+
+  return { cells: rowCells, sequence: spawnedSeq };
 }
 
 // ============================================================================

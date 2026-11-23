@@ -8,6 +8,29 @@ export interface UserBadge {
   awardedAt?: string;
 }
 
+export function getFeaturedBadgesForDisplay(
+  badges?: UserBadge[],
+  featuredCodes?: string[]
+): UserBadge[] {
+  if (!badges || badges.length === 0) return [];
+  if (featuredCodes && featuredCodes.length > 0) {
+    const byCode = new Map<string, UserBadge>();
+    for (const b of badges) {
+      byCode.set(b.code.toUpperCase(), b);
+    }
+    const picked: UserBadge[] = [];
+    for (const code of featuredCodes) {
+      const found = byCode.get(String(code).toUpperCase());
+      if (found && !picked.some((p) => p.code === found.code)) {
+        picked.push(found);
+      }
+      if (picked.length >= 3) break;
+    }
+    if (picked.length > 0) return picked;
+  }
+  return badges.slice(0, 3);
+}
+
 interface BadgeIconProps {
   code: string;
   size?: number;
@@ -90,7 +113,7 @@ export const BadgeIcon: React.FC<BadgeIconProps> = ({ code, size = 22, className
         {/* Bottom Tapered Pedestal Lip */}
         <rect x="5" y="18" width="14" height="2" fill={mainFill} />
         <rect x="7" y="20" width="10" height="2" fill={rimFill} />
-        {/* Inner Dark Plate with "001" Pixel Engraving */}
+        {/* Inner Dark Plate with "001" or "002" Pixel Engraving */}
         <rect x="5" y="10" width="14" height="6" fill="#090d16" />
         {/* Pixel "0" */}
         <rect x="6" y="11" width="3" height="4" fill={shineFill} />
@@ -98,8 +121,93 @@ export const BadgeIcon: React.FC<BadgeIconProps> = ({ code, size = 22, className
         {/* Pixel "0" */}
         <rect x="10" y="11" width="3" height="4" fill={shineFill} />
         <rect x="11" y="12" width="1" height="2" fill="#090d16" />
-        {/* Pixel "1" */}
-        <rect x="15" y="11" width="2" height="4" fill={gemFill} />
+        {normalized.includes('0_0_2') ? (
+          <>
+            {/* Pixel "2" */}
+            <rect x="14" y="11" width="3" height="1" fill={gemFill} />
+            <rect x="16" y="12" width="1" height="1" fill={gemFill} />
+            <rect x="14" y="13" width="3" height="1" fill={gemFill} />
+            <rect x="14" y="14" width="3" height="1" fill={gemFill} />
+          </>
+        ) : (
+          /* Pixel "1" */
+          <rect x="15" y="11" width="2" height="4" fill={gemFill} />
+        )}
+      </svg>
+    );
+  }
+
+  // 2B. CHASER / ENDLESS BADGES: 8-Bit Crimson Predator Comet / Afterburner Arrow
+  if (normalized.startsWith('CHASER_') || normalized.startsWith('ENDLESS_')) {
+    const isPhantom = normalized === 'ENDLESS_1000' || normalized === 'CHASER_OUTRUNNER';
+    const flameMain = isPhantom ? '#ff2a54' : '#ff6d00';
+    const flameTip = isPhantom ? '#ffea00' : '#00f0ff';
+    const hullColor = isPhantom ? '#00f0ff' : '#38bdf8';
+
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        className={`figrid-badge-svg badge-chaser ${className}`}
+        shapeRendering="crispEdges"
+      >
+        {/* Left Chaser Exhaust Trails */}
+        <rect x="1" y="7" width="4" height="2" fill={flameMain} />
+        <rect x="2" y="11" width="5" height="2" fill={flameTip} />
+        <rect x="1" y="15" width="4" height="2" fill={flameMain} />
+        {/* Crimson Chaser Predator Jaws */}
+        <rect x="5" y="5" width="6" height="3" fill={flameMain} />
+        <rect x="5" y="16" width="6" height="3" fill={flameMain} />
+        <rect x="7" y="8" width="5" height="8" fill="#090d16" />
+        <rect x="8" y="10" width="3" height="4" fill={flameTip} />
+        {/* Cyan Player Spearhead Outrunning the Chaser */}
+        <rect x="12" y="4" width="4" height="3" fill={hullColor} />
+        <rect x="12" y="17" width="4" height="3" fill={hullColor} />
+        <rect x="13" y="7" width="6" height="10" fill={hullColor} />
+        <rect x="19" y="9" width="3" height="6" fill="#ffffff" />
+        <rect x="22" y="11" width="1" height="2" fill={flameTip} />
+        <rect x="15" y="10" width="3" height="4" fill="#090d16" />
+        <rect x="16" y="11" width="2" height="2" fill={flameTip} />
+      </svg>
+    );
+  }
+
+  // 2C. CHRONO-DIAL CLOCK BADGES: 8-Bit Astral Chrono-Dial Ring with 4 Cardinal Nodes
+  if (normalized.startsWith('CHRONO_') || normalized.startsWith('CLOCK_')) {
+    const isOverclocker = normalized === 'CHRONO_OVERCLOCKER';
+    const ringMain = isOverclocker ? '#e879f9' : '#c084fc';
+    const nodeActive = isOverclocker ? '#ffea00' : '#00f0ff';
+    const nodeDone = '#22c55e';
+
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        className={`figrid-badge-svg badge-chrono ${className}`}
+        shapeRendering="crispEdges"
+      >
+        {/* Outer Octagonal Pixel Dial Ring */}
+        <rect x="7" y="3" width="10" height="2" fill={ringMain} />
+        <rect x="7" y="19" width="10" height="2" fill={ringMain} />
+        <rect x="3" y="7" width="2" height="10" fill={ringMain} />
+        <rect x="19" y="7" width="2" height="10" fill={ringMain} />
+        <rect x="5" y="5" width="2" height="2" fill={ringMain} />
+        <rect x="17" y="5" width="2" height="2" fill={ringMain} />
+        <rect x="5" y="17" width="2" height="2" fill={ringMain} />
+        <rect x="17" y="17" width="2" height="2" fill={ringMain} />
+        {/* Inner Dark Dial Face */}
+        <rect x="6" y="6" width="12" height="12" fill="#0d0a1a" />
+        {/* 4 Cardinal Clockwise Nodes (12, 3, 6, 9 o'clock) */}
+        <rect x="10" y="1" width="4" height="4" fill={nodeDone} />
+        <rect x="19" y="10" width="4" height="4" fill={nodeDone} />
+        <rect x="10" y="19" width="4" height="4" fill={nodeActive} />
+        <rect x="1" y="10" width="4" height="4" fill={ringMain} />
+        {/* Center Chrono Core */}
+        <rect x="9" y="9" width="6" height="6" fill={ringMain} />
+        <rect x="10" y="10" width="4" height="4" fill={nodeActive} />
+        <rect x="11" y="11" width="2" height="2" fill="#ffffff" />
       </svg>
     );
   }

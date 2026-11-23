@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+﻿import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ROWS,
   COLS,
@@ -19,6 +19,8 @@ import {
   getWrapGhostProjectionsForHeads,
   WrapGhostProjection,
   getQuantumMergeTierInfo,
+  getEndlessRowProfile,
+  generateEndlessRow,
   getSpectrumColor,
   computePointIntensity,
   KeyBindingsMap,
@@ -88,31 +90,30 @@ function saveFinishedRunHistory(history: FinishedRunRecord[]): void {
 }
 
 const OverheatedSynapseIcon: React.FC = () => (
-  <svg className="overheated-synapse-svg" viewBox="0 0 120 64" aria-hidden="true">
-    {/* Presynaptic axon terminal */}
+  <svg className="overheated-synapse-svg" viewBox="0 0 96 72" aria-hidden="true">
+    {/* Heat waves rising off overheated cortex */}
+    <path className="synapse-heat h1" d="M32 14 q3 -4 0 -8 q-3 -4 0 -8" />
+    <path className="synapse-heat h2" d="M48 12 q3 -4 0 -8 q-3 -4 0 -8" />
+    <path className="synapse-heat h3" d="M64 14 q3 -4 0 -8 q-3 -4 0 -8" />
+    {/* Left & right brain hemisphere outlines */}
     <path
-      className="synapse-terminal pre"
-      d="M4 20 C20 18 30 14 40 20 C48 25 48 39 40 44 C30 50 20 46 4 44 Z"
+      className="brain-outline"
+      d="M47 18 C36 16 24 20 20 30 C14 34 14 45 20 51 C24 58 34 61 44 58 C46 57 47 55 47 52 Z"
     />
-    {/* Postsynaptic dendrite */}
     <path
-      className="synapse-terminal post"
-      d="M116 20 C100 18 90 14 80 20 C72 25 72 39 80 44 C90 50 100 46 116 44 Z"
+      className="brain-outline"
+      d="M49 18 C60 16 72 20 76 30 C82 34 82 45 76 51 C72 58 62 61 52 58 C50 57 49 55 49 52 Z"
     />
-    {/* Vesicles */}
-    <circle className="synapse-vesicle" cx="30" cy="26" r="3" />
-    <circle className="synapse-vesicle" cx="34" cy="37" r="2.5" />
-    <circle className="synapse-vesicle" cx="24" cy="33" r="2" />
-    {/* Dropped neurotransmitter packets in the synaptic cleft */}
-    <rect className="synapse-packet p1" x="51" y="24" width="4" height="4" />
-    <rect className="synapse-packet p2" x="58" y="33" width="4" height="4" />
-    <rect className="synapse-packet p3" x="65" y="27" width="4" height="4" />
-    {/* Overload spark */}
-    <path className="synapse-spark" d="M60 4 L54 18 L61 18 L56 30 L68 13 L61 13 L66 4 Z" />
-    {/* Heat waves */}
-    <path className="synapse-heat h1" d="M48 58 q4 -5 0 -10 q-4 -5 0 -10" />
-    <path className="synapse-heat h2" d="M60 60 q4 -5 0 -10 q-4 -5 0 -10" />
-    <path className="synapse-heat h3" d="M72 58 q4 -5 0 -10 q-4 -5 0 -10" />
+    {/* Neural sulci folds */}
+    <path className="brain-fold" d="M27 31 Q35 28 38 35" />
+    <path className="brain-fold" d="M25 44 Q33 42 37 49" />
+    <path className="brain-fold" d="M69 31 Q61 28 58 35" />
+    <path className="brain-fold" d="M71 44 Q63 42 59 49" />
+    {/* Central overheated neuron soma + axon spark */}
+    <circle className="neuron-core" cx="48" cy="38" r="5.5" />
+    <path className="synapse-spark" d="M48 58 L48 68 M43 63 L48 68 L53 63" />
+    <circle className="synapse-vesicle" cx="35" cy="27" r="2" />
+    <circle className="synapse-vesicle" cx="61" cy="27" r="2" />
   </svg>
 );
 
@@ -198,6 +199,8 @@ function assignDistinctBranchColors(branches: OmniBranch[]): void {
 export const App: React.FC = () => {
   const [gameMode, setGameMode] = useState<GameMode>(() => loadGameMode());
   const [board, setBoard] = useState<GeneratedBoard>(() => generateFairBoard(loadGameMode()));
+  const boardRef = useRef<GeneratedBoard>(board);
+  boardRef.current = board;
   const [bindings, setBindings] = useState<KeyBindingsMap>(() => loadKeyBindings());
   const [activeTab, setActiveTab] = useState<'GAME' | 'LEADERBOARD'>('GAME');
   const [isBindingsOpen, setIsBindingsOpen] = useState(false);
@@ -246,8 +249,29 @@ export const App: React.FC = () => {
   const [sequencesHitCount, setSequencesHitCount] = useState<number>(0);
   const [quantumMergesCount, setQuantumMergesCount] = useState<number>(0);
   const [reinforcedHitCount, setReinforcedHitCount] = useState<number>(0);
+  const [clocksHitCount, setClocksHitCount] = useState<number>(0);
   const [mistakesCount, setMistakesCount] = useState<number>(0);
   const [isFinished, setIsFinished] = useState<boolean>(false);
+  const [activeClock, setActiveClock] = useState<{
+    cellIdx: number;
+    digits: [number, number, number, number];
+    step: number;
+    startTs: number;
+    mistakesOnClock: number;
+    rowInGrid: number;
+    colInGrid: number;
+    colsInGrid: number;
+    rowsInGrid: number;
+  } | null>(null);
+  const [boardMorphTick, setBoardMorphTick] = useState<number>(0);
+  const [closingClockDial, setClosingClockDial] = useState<{
+    cellIdx: number;
+    digits: [number, number, number, number];
+    id: number;
+  } | null>(null);
+  const [endlessVisibleTopRow, setEndlessVisibleTopRow] = useState<number>(-2);
+  const [endlessChaserIndex, setEndlessChaserIndex] = useState<number>(-1);
+  const [endlessCaughtByChaser, setEndlessCaughtByChaser] = useState<boolean>(false);
   const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [wrapGhosts, setWrapGhosts] = useState<WrapGhostProjection[]>([]);
   const [quantumLasers, setQuantumLasers] = useState<QuantumLaserLine[]>([]);
@@ -263,6 +287,7 @@ export const App: React.FC = () => {
 
   // Direct DOM references for O(1) zero-reflow updates across the 273 cells
   const cellNodesRef = useRef<(HTMLDivElement | null)[]>(new Array(TOTAL_CELLS).fill(null));
+  const endlessRowLineRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const scoreNodeRef = useRef<HTMLSpanElement | null>(null);
   const lastDeltaBadgeRef = useRef<HTMLSpanElement | null>(null);
   const deltaPopupRootRef = useRef<HTMLDivElement | null>(null);
@@ -280,8 +305,6 @@ export const App: React.FC = () => {
   const serverSessionTokenRef = useRef<string | null>(null);
   const sessionPromiseRef = useRef<Promise<{
     sessionToken: string;
-    mode: GameMode;
-    version: string;
     board: GeneratedBoard;
   } | null> | null>(null);
 
@@ -290,8 +313,8 @@ export const App: React.FC = () => {
     // LINEAR & BINARY mode state
     currentIndex: 0,
     shieldIntactOnCurrent: false,
-    cellHitTimestamps: new Float64Array(TOTAL_CELLS),
-    cellFirstHitTimestamps: new Float64Array(TOTAL_CELLS),
+    cellHitTimestamps: new Float64Array(4096),
+    cellFirstHitTimestamps: new Float64Array(4096),
 
     // BINARY 3-bit mode state
     binaryBitCursor: 0,
@@ -300,7 +323,7 @@ export const App: React.FC = () => {
     binaryOverclocks: 0,
 
     // OMNI-8 mode state
-    doneMask: new Uint8Array(TOTAL_CELLS),
+    doneMask: new Uint8Array(4096),
     clearedCount: 0,
     omniBranches: [] as OmniBranch[],
     omniVisualCells: new Set<number>(),
@@ -317,7 +340,26 @@ export const App: React.FC = () => {
     peakKps: 0,
     sequencesHit: 0,
     reinforcedHit: 0,
+    clocksHit: 0,
+    activeClock: null as {
+      cellIdx: number;
+      digits: [number, number, number, number];
+      step: number;
+      startTs: number;
+      mistakesOnClock: number;
+      rowInGrid: number;
+      colInGrid: number;
+      colsInGrid: number;
+      rowsInGrid: number;
+    } | null,
+    triggeredClockCells: new Set<number>(),
     crackedShieldCells: new Set<number>(),
+    endlessVisibleTopRow: -2,
+    endlessChaserIndex: -1,
+    endlessChaserFloatProgress: 0,
+    endlessChaserStarted: false,
+    endlessChaserReadyAt: 0,
+    endlessNextSeqId: 100,
     mistakes: 0,
     isFinished: false,
     laserCounter: 1,
@@ -477,13 +519,13 @@ export const App: React.FC = () => {
 
   const updateLinearShieldVisibility = useCallback(
     (newCurrentIndex: number, currentBoard: GeneratedBoard, mode: GameMode = 'LINEAR') => {
-      const totalCells = mode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
-      const revealDist =
-        mode === 'BINARY' ? BINARY_SHIELD_REVEAL_DISTANCE : SHIELD_REVEAL_DISTANCE;
+      const totalCells = currentBoard.cells.length;
+      const isBin = mode === 'BINARY' || mode === 'BINARY_ENDLESS';
+      const revealDist = isBin ? BINARY_SHIELD_REVEAL_DISTANCE : SHIELD_REVEAL_DISTANCE;
       const maxIdx = Math.min(totalCells - 1, newCurrentIndex + revealDist);
       for (let i = newCurrentIndex; i <= maxIdx; i++) {
         const cell = currentBoard.cells[i];
-        if (!cell || !cell.isReinforced) continue;
+        if (!cell || (!cell.isReinforced && !cell.isClock)) continue;
         const node = cellNodesRef.current[i];
         if (!node) continue;
         const alpha = getShieldProximityAlpha(i, newCurrentIndex, revealDist);
@@ -631,7 +673,7 @@ export const App: React.FC = () => {
 
     for (let i = 0; i < TOTAL_CELLS; i++) {
       const cell = currentBoard.cells[i];
-      if (!cell.isReinforced) continue;
+      if (!cell.isReinforced && !cell.isClock) continue;
       const node = cellNodesRef.current[i];
       if (!node) continue;
 
@@ -774,9 +816,25 @@ export const App: React.FC = () => {
       eng.peakKps = 0;
       eng.sequencesHit = 0;
       eng.reinforcedHit = 0;
+      eng.clocksHit = 0;
+      eng.activeClock = null;
+      eng.triggeredClockCells.clear();
       eng.crackedShieldCells.clear();
+      eng.endlessVisibleTopRow = -2;
+      eng.endlessChaserIndex = -1;
+      eng.endlessChaserFloatProgress = 0;
+      eng.endlessChaserStarted = false;
+      endlessRowLineRefs.current = {};
+      eng.endlessChaserReadyAt = 0;
+      eng.endlessNextSeqId = 100;
       eng.mistakes = 0;
       eng.isFinished = false;
+      setClocksHitCount(0);
+      setActiveClock(null);
+      setClosingClockDial(null);
+      setEndlessVisibleTopRow(-2);
+      setEndlessChaserIndex(-1);
+      setEndlessCaughtByChaser(false);
 
       samplesRef.current = [];
       setLastSpeedMs(null);
@@ -811,9 +869,11 @@ export const App: React.FC = () => {
           'super-quantum-pill'
         );
       }
-      const modeTotalCells = targetMode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
+      const isEnd = targetMode === 'LINEAR_ENDLESS' || targetMode === 'BINARY_ENDLESS';
+      const modeTotalCells =
+        targetMode === 'BINARY' || targetMode === 'BINARY_ENDLESS' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
       if (progressNodeRef.current) {
-        progressNodeRef.current.textContent = `0 / ${modeTotalCells}`;
+        progressNodeRef.current.textContent = isEnd ? '0' : `0 / ${modeTotalCells}`;
       }
 
       // Register client board with server-authoritative session (zero board swap / flicker!)
@@ -864,11 +924,14 @@ export const App: React.FC = () => {
     eng.doneMask.fill(0);
     eng.omniVisualCells.clear();
 
-    const modeTotalCells = gameMode === 'BINARY' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
-    for (let i = 0; i < TOTAL_CELLS; i++) {
+    const isEnd = gameMode === 'LINEAR_ENDLESS' || gameMode === 'BINARY_ENDLESS';
+    const modeTotalCells =
+      gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS' ? BINARY_TOTAL_CELLS : TOTAL_CELLS;
+    const isBinaryMode = gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS';
+    for (let i = 0; i < cellNodesRef.current.length; i++) {
       const node = cellNodesRef.current[i];
       if (!node) continue;
-      node.className = 'cell';
+      node.className = isBinaryMode ? 'cell binary-cell' : 'cell';
       node.style.setProperty('--shield-alpha', '0');
       node.style.removeProperty('--branch-color');
       node.style.removeProperty('--overlap-color-1');
@@ -879,7 +942,7 @@ export const App: React.FC = () => {
       scoreNodeRef.current.textContent = eng.displayedScore.toLocaleString('en-US');
     }
 
-    if (gameMode === 'LINEAR' || gameMode === 'BINARY') {
+    if (gameMode === 'LINEAR' || gameMode === 'BINARY' || isEnd) {
       eng.currentIndex = 0;
       eng.shieldIntactOnCurrent = Boolean(board.cells[0]?.isReinforced);
       eng.binaryBitCursor = 0;
@@ -890,9 +953,9 @@ export const App: React.FC = () => {
       if (firstNode) firstNode.classList.add('linear-target');
       setWrapGhosts([]);
       if (progressNodeRef.current) {
-        progressNodeRef.current.textContent = `0 / ${modeTotalCells}`;
+        progressNodeRef.current.textContent = isEnd ? '0' : `0 / ${modeTotalCells}`;
       }
-      updateLinearShieldVisibility(0, board, gameMode);
+      updateLinearShieldVisibility(0, board, gameMode === 'BINARY_ENDLESS' ? 'BINARY' : gameMode === 'LINEAR_ENDLESS' ? 'LINEAR' : gameMode);
     } else {
       const startIdx = OMNI_CENTER_INDEX;
       eng.doneMask.fill(0);
@@ -964,10 +1027,14 @@ export const App: React.FC = () => {
       (window as any).__nightmare
     );
 
+    const isEndlessRun = gameMode === 'LINEAR_ENDLESS' || gameMode === 'BINARY_ENDLESS';
     const verifyRes = await apiFinishGameSession({
       sessionToken: serverSessionTokenRef.current,
       nick,
       events: telemetryEventsRef.current,
+      endlessBoard: isEndlessRun
+        ? { cells: boardRef.current.cells, sequences: boardRef.current.sequences }
+        : undefined,
       isMobile: isMobileRun,
       isAutomated: isAutomatedBrowser,
     } as any);
@@ -1084,6 +1151,158 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
+  // ENDLESS CHASER LOOP: Smooth 60fps continuous red laser line under each row + slower pace
+  useEffect(() => {
+    const isEnd = gameMode === 'LINEAR_ENDLESS' || gameMode === 'BINARY_ENDLESS';
+    if (!isEnd || !hasStarted || isFinished || activeTab !== 'GAME') return;
+
+    let rafId: number | null = null;
+    const colsCount = gameMode === 'BINARY_ENDLESS' ? BINARY_COLS : COLS;
+    // Softer initial base pace that scales smoothly & proportionally with completed rows
+    const baseCellMs = gameMode === 'BINARY_ENDLESS' ? 1280 : 480;
+    const eng = engineRef.current;
+    if (eng.endlessChaserReadyAt === 0) {
+      eng.endlessChaserReadyAt = performance.now() + 2000;
+      eng.endlessChaserFloatProgress = 0;
+    }
+    let lastFrameTs = performance.now();
+
+    const syncRowLines = (floatProg: number) => {
+      const topRow = eng.endlessVisibleTopRow;
+      for (let v = 0; v < 5; v++) {
+        const r = topRow + v;
+        if (r < 0) continue;
+        const lineEl = endlessRowLineRefs.current[r];
+        if (!lineEl) continue;
+        const rowStart = r * colsCount;
+        const rowEnd = (r + 1) * colsCount;
+        const pct =
+          floatProg <= rowStart
+            ? 0
+            : floatProg >= rowEnd
+            ? 100
+            : ((floatProg - rowStart) / colsCount) * 100;
+        lineEl.style.width = `${pct.toFixed(2)}%`;
+      }
+    };
+
+    const tick = (nowMs: number) => {
+      if (eng.isFinished) return;
+      const dt = Math.min(100, Math.max(0, nowMs - lastFrameTs));
+      lastFrameTs = nowMs;
+
+      if (nowMs < eng.endlessChaserReadyAt) {
+        syncRowLines(0);
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+
+      if (!eng.endlessChaserStarted) {
+        eng.endlessChaserStarted = true;
+        eng.endlessChaserFloatProgress = 0;
+      }
+
+      const currentChaserRow = Math.floor(Math.max(0, eng.endlessChaserFloatProgress) / colsCount);
+      const profile = getEndlessRowProfile(currentChaserRow);
+      const completedRows = Math.floor(Math.max(0, eng.currentIndex) / colsCount);
+      const rowScaleStep = gameMode === 'LINEAR_ENDLESS' ? 0.055 : 0.032;
+      const rowScaleMax = gameMode === 'LINEAR_ENDLESS' ? 1.8 : 1.4;
+      const rowScaleFactor = 1 + Math.min(rowScaleMax, completedRows * rowScaleStep);
+      const cellsPerMs = (profile.speedMult * rowScaleFactor) / baseCellMs;
+      eng.endlessChaserFloatProgress += dt * cellsPerMs;
+
+      syncRowLines(eng.endlessChaserFloatProgress);
+
+      // A tile turns red as soon as the Chaser line enters it
+      const latestRedIdx = Math.floor(eng.endlessChaserFloatProgress - 0.02);
+      if (latestRedIdx !== eng.endlessChaserIndex) {
+        eng.endlessChaserIndex = latestRedIdx;
+        setEndlessChaserIndex(latestRedIdx);
+      }
+
+      // Chaser catches player when the red line reaches across the player's current cell
+      if (eng.endlessChaserFloatProgress >= eng.currentIndex + 0.75) {
+        eng.runEndTime = nowMs;
+        eng.isFinished = true;
+        eng.activeClock = null;
+        setActiveClock(null);
+        setClosingClockDial(null);
+        setEndlessCaughtByChaser(true);
+        setIsFinished(true);
+        return;
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [gameMode, hasStarted, isFinished, activeTab]);
+
+  // Imperatively sync Endless 5-row DOM classes (.done, .linear-target, .chaser-head, .chaser-trail, --shield-alpha)
+  useEffect(() => {
+    if (gameMode !== 'LINEAR_ENDLESS' && gameMode !== 'BINARY_ENDLESS') return;
+    const eng = engineRef.current;
+    const colsCount = gameMode === 'BINARY_ENDLESS' ? BINARY_COLS : COLS;
+    const startIdx = Math.max(0, eng.endlessVisibleTopRow * colsCount);
+    const endIdx = Math.min(
+      boardRef.current.cells.length - 1,
+      (eng.endlessVisibleTopRow + 5) * colsCount - 1
+    );
+    for (let i = startIdx; i <= endIdx; i++) {
+      const node = cellNodesRef.current[i];
+      if (!node) continue;
+      if (i < eng.currentIndex) {
+        node.classList.remove(
+          'linear-target',
+          'shield-cracked',
+          'shield-approaching',
+          'clock-active-cell'
+        );
+        node.style.setProperty('--shield-alpha', '0');
+        node.classList.add('done');
+      } else if (i === eng.currentIndex && !eng.isFinished) {
+        node.classList.remove('done', 'shield-approaching');
+        node.classList.add('linear-target');
+        if (boardRef.current.cells[i]?.isReinforced && !eng.shieldIntactOnCurrent) {
+          node.classList.add('shield-cracked');
+        }
+      }
+      if (hasStarted && !eng.isFinished && i === eng.endlessChaserIndex) {
+        node.classList.add('chaser-head');
+        node.classList.remove('chaser-trail');
+      } else if (hasStarted && eng.endlessChaserIndex >= 0 && i < eng.endlessChaserIndex) {
+        node.classList.add('chaser-trail');
+        node.classList.remove('chaser-head');
+      } else {
+        node.classList.remove('chaser-head', 'chaser-trail');
+      }
+    }
+    for (let v = 0; v < 5; v++) {
+      const r = eng.endlessVisibleTopRow + v;
+      if (r < 0) continue;
+      const lineEl = endlessRowLineRefs.current[r];
+      if (!lineEl) continue;
+      const rowStart = r * colsCount;
+      const rowEnd = (r + 1) * colsCount;
+      const fp = eng.endlessChaserStarted ? eng.endlessChaserFloatProgress : 0;
+      const pct =
+        fp <= rowStart ? 0 : fp >= rowEnd ? 100 : ((fp - rowStart) / colsCount) * 100;
+      lineEl.style.width = `${pct.toFixed(2)}%`;
+    }
+    updateLinearShieldVisibility(eng.currentIndex, boardRef.current, gameMode);
+  }, [
+    endlessVisibleTopRow,
+    endlessChaserIndex,
+    gameMode,
+    board,
+    hasStarted,
+    isFinished,
+    updateLinearShieldVisibility,
+  ]);
+
   const releasePhysicalKey = useCallback((physCode: string) => {
     pressedPhysicalKeysRef.current.delete(physCode);
     const tracked = activeKeyDownEventMapRef.current.get(physCode);
@@ -1109,10 +1328,99 @@ export const App: React.FC = () => {
         return;
       }
 
-      if (gameMode === 'BINARY' && mappedDigit !== 0 && mappedDigit !== 1) return;
+      const isBinaryLikeMode = gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS';
+      if (isBinaryLikeMode && mappedDigit !== 0 && mappedDigit !== 1) return;
 
       const eng = engineRef.current;
       if (eng.isFinished) return;
+
+      const triggerClockForCell = (cellIdx: number, cellObj: any, nowTs: number) => {
+        if (!cellObj?.isClock || !cellObj.clockDigits || cellObj.clockDigits.length !== 4) return false;
+        if (eng.triggeredClockCells.has(cellIdx)) return false;
+        eng.triggeredClockCells.add(cellIdx);
+        const colsInGrid = isBinaryLikeMode ? BINARY_COLS : COLS;
+        const isEnd = gameMode === 'LINEAR_ENDLESS' || gameMode === 'BINARY_ENDLESS';
+        const rowsInGrid = isEnd ? 5 : (gameMode === 'BINARY' ? 8 : ROWS);
+        const rawRow = Math.floor(cellIdx / colsInGrid);
+        const rowInGrid = isEnd ? rawRow - eng.endlessVisibleTopRow : rawRow;
+        const colInGrid = cellIdx % colsInGrid;
+        const clockObj = {
+          cellIdx,
+          digits: [...cellObj.clockDigits] as [number, number, number, number],
+          step: 0,
+          startTs: nowTs,
+          mistakesOnClock: 0,
+          rowInGrid,
+          colInGrid,
+          colsInGrid,
+          rowsInGrid,
+        };
+        eng.activeClock = clockObj;
+        setActiveClock(clockObj);
+        const targetNode = cellNodesRef.current[cellIdx];
+        if (targetNode) {
+          targetNode.classList.add('clock-active-cell', 'clock-elevated');
+        }
+        return true;
+      };
+
+      const triggerClockCloseAnimation = (clk: {
+        cellIdx: number;
+        digits: [number, number, number, number];
+        mistakesOnClock: number;
+      }) => {
+        const closeId = performance.now();
+        setClosingClockDial({
+          cellIdx: clk.cellIdx,
+          digits: clk.digits,
+          id: closeId,
+        });
+        const cNode = cellNodesRef.current[clk.cellIdx];
+        if (cNode) {
+          cNode.classList.remove('clock-active-cell');
+          cNode.classList.add('clock-closing', 'clock-elevated');
+        }
+        window.setTimeout(() => {
+          setClosingClockDial((prev) => (prev?.id === closeId ? null : prev));
+          const nodeAfter = cellNodesRef.current[clk.cellIdx];
+          if (nodeAfter) {
+            nodeAfter.classList.remove('clock-closing', 'clock-elevated');
+          }
+        }, 560);
+
+        // Flawless Clock Reward (0 mistakes on clock):
+        // Keep the next 2 cells (cellIdx+1, cellIdx+2) unchanged,
+        // and morph the following 4 cells (cellIdx+3 .. cellIdx+6) into a series of identical digits!
+        if (
+          clk.mistakesOnClock === 0 &&
+          (gameMode === 'LINEAR_ENDLESS' || gameMode === 'BINARY_ENDLESS')
+        ) {
+          const cellsArr = boardRef.current.cells;
+          const baseMorphIdx = clk.cellIdx + 3;
+          if (baseMorphIdx < cellsArr.length) {
+            const syncDigit = cellsArr[baseMorphIdx].digit;
+            for (let offset = 3; offset <= 6; offset++) {
+              const targetIdx = clk.cellIdx + offset;
+              if (targetIdx < cellsArr.length) {
+                cellsArr[targetIdx].digit = syncDigit;
+                const staggerMs = (offset - 3) * 55;
+                window.setTimeout(() => {
+                  const mNode = cellNodesRef.current[targetIdx];
+                  if (mNode) {
+                    mNode.classList.remove('clock-reward-morph');
+                    void mNode.offsetWidth;
+                    mNode.classList.add('clock-reward-morph');
+                    window.setTimeout(() => {
+                      mNode.classList.remove('clock-reward-morph');
+                    }, 650);
+                  }
+                }, staggerMs);
+              }
+            }
+            setBoardMorphTick((t) => t + 1);
+          }
+        }
+      };
 
       const now = Math.round(performance.now() * 100) / 100;
 
@@ -1134,9 +1442,129 @@ export const App: React.FC = () => {
       // ======================================================================
       // MODE C: BINARY (8x8 Matrix, Digits 0-7, 3-Bit Binary Input [4][2][1])
       // ======================================================================
-      if (gameMode === 'BINARY') {
+      if (gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS') {
+        const isBinaryEndless = gameMode === 'BINARY_ENDLESS';
+        if (eng.activeClock) {
+          const clk = eng.activeClock;
+          const bitCursor = eng.binaryBitCursor;
+          const targetClockDigit = clk.digits[clk.step];
+          const expectedBit = (targetClockDigit >> (2 - bitCursor)) & 1;
+          if (mappedDigit === expectedBit) {
+            const delta = eng.lastKeystrokeTime === 0 ? 240 : Math.max(15, now - eng.lastKeystrokeTime);
+            const clampedDelta = Math.max(MIN_DELTA_MS, delta);
+            const speedBonus = delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
+            eng.lastKeystrokeTime = now;
+            eng.totalKeystrokes += 1;
+            eng.sumDeltaMs += delta;
+
+            if (bitCursor < 2) {
+              const nextBit = bitCursor + 1;
+              eng.binaryBitCursor = nextBit;
+              setBinaryBitCursor(nextBit);
+              eng.score += BASE_POINTS + speedBonus;
+              triggerDeltaPopup(BASE_POINTS + speedBonus, getSpectrumColor(computePointIntensity(BASE_POINTS + speedBonus, clampedDelta)), `[DIAL ${clk.step + 1}/4 BIT ${nextBit}/3]`);
+              return;
+            }
+
+            eng.binaryBitCursor = 0;
+            setBinaryBitCursor(0);
+            const nextStep = clk.step + 1;
+            if (nextStep < 4) {
+              const updatedClk = { ...clk, step: nextStep };
+              eng.activeClock = updatedClk;
+              setActiveClock(updatedClk);
+              eng.score += BASE_POINTS + speedBonus;
+              triggerDeltaPopup(BASE_POINTS + speedBonus, '#38bdf8', `[CHRONO ${nextStep}/4]`);
+              return;
+            }
+
+            // Completed all 4 Clock dial digits!
+            const elapsedClockMs = Math.max(250, now - clk.startTs);
+            const chronoBonus = Math.max(40, Math.round(120000 / elapsedClockMs));
+            const totalPts = BASE_POINTS + speedBonus + chronoBonus;
+            eng.score += totalPts;
+            eng.clocksHit += 1;
+            setClocksHitCount(eng.clocksHit);
+            eng.activeClock = null;
+            setActiveClock(null);
+            const cIdx = clk.cellIdx;
+            const cNode = cellNodesRef.current[cIdx];
+            if (cNode) {
+              cNode.classList.remove(
+                'active',
+                'linear-target',
+                'error',
+                'shield-cracked',
+                'shield-approaching',
+                'clock-active-cell'
+              );
+              cNode.style.setProperty('--shield-alpha', '0');
+              cNode.classList.add('done');
+            }
+            const nextIndex = cIdx + 1;
+            eng.currentIndex = nextIndex;
+            setBinaryActiveTargetIdx(nextIndex);
+            if (progressNodeRef.current) {
+              progressNodeRef.current.textContent = isBinaryEndless ? `${nextIndex}` : `${nextIndex} / ${BINARY_TOTAL_CELLS}`;
+            }
+
+            if (isBinaryEndless) {
+              const newRow = Math.floor(nextIndex / BINARY_COLS);
+              const targetTop = newRow - 2;
+              if (targetTop > eng.endlessVisibleTopRow) {
+                eng.endlessVisibleTopRow = targetTop;
+                setEndlessVisibleTopRow(targetTop);
+                const maxExistingRow = Math.floor((boardRef.current.cells.length - 1) / BINARY_COLS);
+                if (newRow + 2 > maxExistingRow) {
+                  const gen = generateEndlessRow(maxExistingRow + 1, 'BINARY_ENDLESS', eng.endlessNextSeqId);
+                  boardRef.current.cells.push(...gen.cells);
+                }
+              }
+            }
+
+            triggerClockCloseAnimation(clk);
+            triggerDeltaPopup(
+              totalPts,
+              '#facc15',
+              isBinaryEndless && clk.mistakesOnClock === 0
+                ? `[CHRONO +${chronoBonus} // 4X SYNC!]`
+                : `[CHRONO +${chronoBonus}!]`,
+              true
+            );
+
+            if (isBinaryEndless || nextIndex < BINARY_TOTAL_CELLS) {
+              const nextCell = boardRef.current.cells[nextIndex];
+              eng.shieldIntactOnCurrent = Boolean(nextCell?.isReinforced);
+              const nextNode = cellNodesRef.current[nextIndex];
+              if (nextNode) {
+                nextNode.classList.remove('shield-approaching');
+                nextNode.classList.add('linear-target');
+              }
+              updateLinearShieldVisibility(nextIndex, boardRef.current, 'BINARY');
+            } else {
+              eng.runEndTime = now;
+              eng.isFinished = true;
+              setIsFinished(true);
+            }
+            return;
+          } else {
+            const delta = eng.lastKeystrokeTime === 0 ? MAX_BONUS_DELTA_MS : Math.max(MIN_DELTA_MS, now - eng.lastKeystrokeTime);
+            const penalty = Math.round(BASE_POINTS * 2 + Math.round(3200 / delta) * 2.2);
+            eng.score = Math.max(0, eng.score - penalty);
+            eng.lastKeystrokeTime = now;
+            eng.mistakes += 1;
+            setMistakesCount(eng.mistakes);
+            setBinaryBitErrorSlot(bitCursor);
+            window.setTimeout(() => setBinaryBitErrorSlot(null), 260);
+            triggerBoardErrorFlash();
+            if (eng.activeClock) eng.activeClock.mistakesOnClock += 1;
+            triggerDeltaPopup(-penalty, '#ff2a54', 'DIAL MISS!');
+            return;
+          }
+        }
+
         const idx = eng.currentIndex;
-        const currentCell = board.cells[idx];
+        const currentCell = boardRef.current.cells[idx];
         const currentNode = cellNodesRef.current[idx];
         if (!currentCell) return;
 
@@ -1221,6 +1649,16 @@ export const App: React.FC = () => {
             return;
           }
 
+          if (triggerClockForCell(idx, currentCell, now)) {
+            const clkPts = BASE_POINTS + speedBonus;
+            eng.score += clkPts;
+            triggerDeltaPopup(clkPts, '#38bdf8', '[CHRONO-DIAL!]');
+            const roundedDelta = Math.round(delta);
+            setLastSpeedMs(roundedDelta);
+            setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+            return;
+          }
+
           const isSecondShieldHit = currentCell.isReinforced && !eng.shieldIntactOnCurrent;
           const multiplier = isSecondShieldHit ? 2 : 1;
           let pointsGained = (BASE_POINTS + speedBonus) * multiplier;
@@ -1247,7 +1685,7 @@ export const App: React.FC = () => {
           // 2. XOR-7 COMPLEMENT OVERCLOCK (+450 pts): consecutive tiles are bitwise NOT complements (prev ^ curr == 7)
           if (
             idx > 0 &&
-            (board.cells[idx - 1].digit ^ targetDigit) === 7 &&
+            (boardRef.current.cells[idx - 1].digit ^ targetDigit) === 7 &&
             avgTileBitDelta <= 420
           ) {
             pointsGained += 450;
@@ -1303,18 +1741,34 @@ export const App: React.FC = () => {
           setBinaryActiveTargetIdx(nextIndex);
 
           if (progressNodeRef.current) {
-            progressNodeRef.current.textContent = `${nextIndex} / ${BINARY_TOTAL_CELLS}`;
+            progressNodeRef.current.textContent = isBinaryEndless
+              ? `${nextIndex}`
+              : `${nextIndex} / ${BINARY_TOTAL_CELLS}`;
           }
 
-          if (nextIndex < BINARY_TOTAL_CELLS) {
-            const nextCell = board.cells[nextIndex];
-            eng.shieldIntactOnCurrent = nextCell.isReinforced;
+          if (isBinaryEndless) {
+            const newRow = Math.floor(nextIndex / BINARY_COLS);
+            const targetTop = newRow - 2;
+            if (targetTop > eng.endlessVisibleTopRow) {
+              eng.endlessVisibleTopRow = targetTop;
+              setEndlessVisibleTopRow(targetTop);
+              const maxExistingRow = Math.floor((boardRef.current.cells.length - 1) / BINARY_COLS);
+              if (newRow + 2 > maxExistingRow) {
+                const gen = generateEndlessRow(maxExistingRow + 1, 'BINARY_ENDLESS', eng.endlessNextSeqId);
+                boardRef.current.cells.push(...gen.cells);
+              }
+            }
+          }
+
+          if (isBinaryEndless || nextIndex < BINARY_TOTAL_CELLS) {
+            const nextCell = boardRef.current.cells[nextIndex];
+            eng.shieldIntactOnCurrent = Boolean(nextCell?.isReinforced);
             const nextNode = cellNodesRef.current[nextIndex];
             if (nextNode) {
               nextNode.classList.remove('shield-approaching');
               nextNode.classList.add('linear-target');
             }
-            updateLinearShieldVisibility(nextIndex, board, 'BINARY');
+            updateLinearShieldVisibility(nextIndex, boardRef.current, 'BINARY');
           } else {
             eng.runEndTime = now;
             eng.isFinished = true;
@@ -1380,6 +1834,60 @@ export const App: React.FC = () => {
         const clampedDelta = Math.max(MIN_DELTA_MS, delta);
         const speedBonus =
           delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
+
+        if (eng.activeClock) {
+          const clk = eng.activeClock;
+          if (mappedDigit === clk.digits[clk.step]) {
+            eng.lastKeystrokeTime = now;
+            eng.totalKeystrokes += 1;
+            eng.sumDeltaMs += delta;
+            const nextStep = clk.step + 1;
+            if (nextStep < 4) {
+              const updatedClk = { ...clk, step: nextStep };
+              eng.activeClock = updatedClk;
+              setActiveClock(updatedClk);
+              eng.score += BASE_POINTS + speedBonus;
+              triggerDeltaPopup(BASE_POINTS + speedBonus, '#38bdf8', `[CHRONO ${nextStep}/4]`);
+            } else {
+              const elapsedClockMs = Math.max(250, now - clk.startTs);
+              const chronoBonus = Math.max(40, Math.round(120000 / elapsedClockMs));
+              const totalPts = BASE_POINTS + speedBonus + chronoBonus;
+              eng.score += totalPts;
+              eng.clocksHit += 1;
+              setClocksHitCount(eng.clocksHit);
+              eng.activeClock = null;
+              setActiveClock(null);
+              syncOmniVisualState(boardRef.current);
+              const omniClkNode = cellNodesRef.current[clk.cellIdx];
+              if (omniClkNode) {
+                omniClkNode.style.setProperty('--shield-alpha', '0');
+                omniClkNode.classList.add('done');
+              }
+              triggerClockCloseAnimation(clk);
+              triggerDeltaPopup(totalPts, '#facc15', `[CHRONO +${chronoBonus}!]`, true);
+              if (eng.clearedCount >= TOTAL_CELLS) {
+                eng.runEndTime = now;
+                eng.isFinished = true;
+                setIsFinished(true);
+              }
+            }
+            const roundedDelta = Math.round(delta);
+            setLastSpeedMs(roundedDelta);
+            setAvgSpeedMs(Math.round(eng.sumDeltaMs / eng.totalKeystrokes));
+            return;
+          } else {
+            const errDelta = eng.lastKeystrokeTime === 0 ? MAX_BONUS_DELTA_MS : Math.max(MIN_DELTA_MS, now - eng.lastKeystrokeTime);
+            const penalty = Math.round(BASE_POINTS * 2 + Math.round(3200 / errDelta) * 2.2);
+            eng.score = Math.max(0, eng.score - penalty);
+            eng.lastKeystrokeTime = now;
+            eng.mistakes += 1;
+            setMistakesCount(eng.mistakes);
+            triggerBoardErrorFlash();
+            if (eng.activeClock) eng.activeClock.mistakesOnClock += 1;
+            triggerDeltaPopup(-penalty, '#ff2a54', 'DIAL MISS!');
+            return;
+          }
+        }
 
         if (eng.clearedCount === 0) {
           const startBranch = eng.omniBranches[0];
@@ -1764,12 +2272,23 @@ export const App: React.FC = () => {
           scoreNodeRef.current.style.color = specColor;
         }
 
+        let clockTriggeredNow = false;
+        if (deduplicated.length === 1) {
+          const winHeadIdx = deduplicated[0].headIndex;
+          const winCell = board.cells[winHeadIdx];
+          if (triggerClockForCell(winHeadIdx, winCell, now)) {
+            clockTriggeredNow = true;
+          }
+        }
+
         const anyUncrackedShieldNow = deduplicated.some(
           (br) => board.cells[br.headIndex].isReinforced && !br.shieldCrackedOnHead
         );
 
         let tag = '';
-        if (quantumTitle) {
+        if (clockTriggeredNow) {
+          tag = '[CHRONO-DIAL!]';
+        } else if (quantumTitle) {
           tag = `[${quantumTitle}]`;
         } else if (completedShield2xOnStep) {
           tag = '[SHIELD 2X!]';
@@ -1785,7 +2304,7 @@ export const App: React.FC = () => {
           progressNodeRef.current.textContent = `${eng.clearedCount} / ${TOTAL_CELLS}`;
         }
 
-        if (eng.clearedCount >= TOTAL_CELLS && !anyUncrackedShieldNow) {
+        if (eng.clearedCount >= TOTAL_CELLS && !anyUncrackedShieldNow && !eng.activeClock) {
           eng.runEndTime = now;
           eng.isFinished = true;
           setIsFinished(true);
@@ -1810,11 +2329,117 @@ export const App: React.FC = () => {
       }
 
       // ======================================================================
-      // MODE B: LINEAR (v0.0.2: Shield-in-Sequence 2X Sequence Bonus + Persistent Sequence Highlight)
+      // MODE B: LINEAR & LINEAR_ENDLESS
       // ======================================================================
+      const isLinearEndless = gameMode === 'LINEAR_ENDLESS';
+      if (eng.activeClock) {
+        const clk = eng.activeClock;
+        if (mappedDigit === clk.digits[clk.step]) {
+          const delta = eng.lastKeystrokeTime === 0 ? 240 : Math.max(15, now - eng.lastKeystrokeTime);
+          const clampedDelta = Math.max(MIN_DELTA_MS, delta);
+          const speedBonus = delta < MAX_BONUS_DELTA_MS ? Math.round(2800 / clampedDelta) : 0;
+          eng.lastKeystrokeTime = now;
+          eng.totalKeystrokes += 1;
+          eng.sumDeltaMs += delta;
+          const nextStep = clk.step + 1;
+          if (nextStep < 4) {
+            const updatedClk = { ...clk, step: nextStep };
+            eng.activeClock = updatedClk;
+            setActiveClock(updatedClk);
+            eng.score += BASE_POINTS + speedBonus;
+            triggerDeltaPopup(BASE_POINTS + speedBonus, '#38bdf8', `[CHRONO ${nextStep}/4]`);
+            return;
+          }
+
+          const elapsedClockMs = Math.max(250, now - clk.startTs);
+          const chronoBonus = Math.max(40, Math.round(120000 / elapsedClockMs));
+          const totalPts = BASE_POINTS + speedBonus + chronoBonus;
+          eng.score += totalPts;
+          eng.clocksHit += 1;
+          setClocksHitCount(eng.clocksHit);
+          eng.activeClock = null;
+          setActiveClock(null);
+          const cIdx = clk.cellIdx;
+          const cNode = cellNodesRef.current[cIdx];
+          if (cNode) {
+            cNode.classList.remove(
+              'active',
+              'linear-target',
+              'error',
+              'shield-cracked',
+              'shield-approaching',
+              'clock-active-cell'
+            );
+            cNode.style.setProperty('--shield-alpha', '0');
+            cNode.classList.add('done');
+          }
+          const nextIndex = cIdx + 1;
+          eng.currentIndex = nextIndex;
+          if (progressNodeRef.current) {
+            progressNodeRef.current.textContent = isLinearEndless ? `${nextIndex}` : `${nextIndex} / ${TOTAL_CELLS}`;
+          }
+
+          if (isLinearEndless) {
+            const newRow = Math.floor(nextIndex / COLS);
+            const targetTop = newRow - 2;
+            if (targetTop > eng.endlessVisibleTopRow) {
+              eng.endlessVisibleTopRow = targetTop;
+              setEndlessVisibleTopRow(targetTop);
+              const maxExistingRow = Math.floor((boardRef.current.cells.length - 1) / COLS);
+              if (newRow + 2 > maxExistingRow) {
+                const gen = generateEndlessRow(maxExistingRow + 1, 'LINEAR_ENDLESS', eng.endlessNextSeqId);
+                boardRef.current.cells.push(...gen.cells);
+                if (gen.sequence) {
+                  boardRef.current.sequences.push(gen.sequence);
+                  eng.endlessNextSeqId += 1;
+                }
+              }
+            }
+          }
+
+          triggerClockCloseAnimation(clk);
+          triggerDeltaPopup(
+            totalPts,
+            '#facc15',
+            isLinearEndless && clk.mistakesOnClock === 0
+              ? `[CHRONO +${chronoBonus} // 4X SYNC!]`
+              : `[CHRONO +${chronoBonus}!]`,
+            true
+          );
+
+          if (isLinearEndless || nextIndex < TOTAL_CELLS) {
+            const nextCell = boardRef.current.cells[nextIndex];
+            eng.shieldIntactOnCurrent = Boolean(nextCell?.isReinforced);
+            const nextNode = cellNodesRef.current[nextIndex];
+            if (nextNode) {
+              nextNode.classList.remove('shield-approaching');
+              nextNode.classList.add('linear-target');
+            }
+            updateLinearShieldVisibility(nextIndex, boardRef.current);
+          } else {
+            eng.runEndTime = now;
+            eng.isFinished = true;
+            setIsFinished(true);
+          }
+          return;
+        } else {
+          const delta = eng.lastKeystrokeTime === 0 ? MAX_BONUS_DELTA_MS : Math.max(MIN_DELTA_MS, now - eng.lastKeystrokeTime);
+          const penalty = Math.round(BASE_POINTS * 2 + Math.round(3200 / delta) * 2.2);
+          eng.score = Math.max(0, eng.score - penalty);
+          eng.lastKeystrokeTime = now;
+          eng.mistakes += 1;
+          setMistakesCount(eng.mistakes);
+          triggerBoardErrorFlash();
+          if (eng.activeClock) eng.activeClock.mistakesOnClock += 1;
+            triggerDeltaPopup(-penalty, '#ff2a54', 'DIAL MISS!');
+          return;
+        }
+      }
+
       const idx = eng.currentIndex;
-      const currentCell = board.cells[idx];
+      const currentCell = boardRef.current.cells[idx];
       const currentNode = cellNodesRef.current[idx];
+      if (!currentCell) return;
 
       if (mappedDigit === currentCell.digit) {
         if (eng.runStartTime === 0) eng.runStartTime = now;
@@ -1846,6 +2471,16 @@ export const App: React.FC = () => {
           }
 
           triggerDeltaPopup(shieldBreakPoints, specColor, '[CRACKED!]');
+          return;
+        }
+
+        if (triggerClockForCell(idx, currentCell, now)) {
+          const clkPts = BASE_POINTS + speedBonus;
+          eng.score += clkPts;
+          eng.lastKeystrokeTime = now;
+          eng.totalKeystrokes += 1;
+          eng.sumDeltaMs += delta;
+          triggerDeltaPopup(clkPts, '#38bdf8', '[CHRONO-DIAL!]');
           return;
         }
 
@@ -1977,18 +2612,38 @@ export const App: React.FC = () => {
         eng.currentIndex = nextIndex;
 
         if (progressNodeRef.current) {
-          progressNodeRef.current.textContent = `${nextIndex} / ${TOTAL_CELLS}`;
+          progressNodeRef.current.textContent = isLinearEndless
+            ? `${nextIndex}`
+            : `${nextIndex} / ${TOTAL_CELLS}`;
         }
 
-        if (nextIndex < TOTAL_CELLS) {
-          const nextCell = board.cells[nextIndex];
-          eng.shieldIntactOnCurrent = nextCell.isReinforced;
+        if (isLinearEndless) {
+          const newRow = Math.floor(nextIndex / COLS);
+          const targetTop = newRow - 2;
+          if (targetTop > eng.endlessVisibleTopRow) {
+            eng.endlessVisibleTopRow = targetTop;
+            setEndlessVisibleTopRow(targetTop);
+            const maxExistingRow = Math.floor((boardRef.current.cells.length - 1) / COLS);
+            if (newRow + 2 > maxExistingRow) {
+              const gen = generateEndlessRow(maxExistingRow + 1, 'LINEAR_ENDLESS', eng.endlessNextSeqId);
+              boardRef.current.cells.push(...gen.cells);
+              if (gen.sequence) {
+                boardRef.current.sequences.push(gen.sequence);
+                eng.endlessNextSeqId += 1;
+              }
+            }
+          }
+        }
+
+        if (isLinearEndless || nextIndex < TOTAL_CELLS) {
+          const nextCell = boardRef.current.cells[nextIndex];
+          eng.shieldIntactOnCurrent = Boolean(nextCell?.isReinforced);
           const nextNode = cellNodesRef.current[nextIndex];
           if (nextNode) {
             nextNode.classList.remove('shield-approaching');
             nextNode.classList.add('linear-target');
           }
-          updateLinearShieldVisibility(nextIndex, board);
+          updateLinearShieldVisibility(nextIndex, boardRef.current);
         } else {
           eng.runEndTime = now;
           eng.isFinished = true;
@@ -2223,11 +2878,7 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleQuickToggleMode = () => {
-    const nextMode: GameMode =
-      gameMode === 'LINEAR' ? 'OMNI' : gameMode === 'OMNI' ? 'BINARY' : 'LINEAR';
-    const modeLabel =
-      nextMode === 'OMNI' ? 'OMNI-8' : nextMode === 'BINARY' ? 'BINARY (8x8)' : 'LINEAR';
+  const applyModeSwitch = (nextMode: GameMode, modeLabel: string) => {
     if (hasStarted && !engineRef.current.isFinished) {
       setConfirmDialog({
         title: 'SWITCH GAME MODE?',
@@ -2245,6 +2896,37 @@ export const App: React.FC = () => {
     setGameMode(nextMode);
     saveGameMode(nextMode);
     startNewGame(nextMode);
+  };
+
+  const handleQuickToggleMode = () => {
+    const nextMode: GameMode =
+      gameMode === 'LINEAR' || gameMode === 'LINEAR_ENDLESS'
+        ? 'OMNI'
+        : gameMode === 'OMNI'
+        ? 'BINARY'
+        : 'LINEAR';
+    const modeLabel =
+      nextMode === 'OMNI' ? 'OMNI-8' : nextMode === 'BINARY' ? 'BINARY (8x8)' : 'LINEAR';
+    applyModeSwitch(nextMode, modeLabel);
+  };
+
+  const handleToggleEndless = () => {
+    if (gameMode === 'OMNI') return;
+    const nextMode: GameMode =
+      gameMode === 'LINEAR'
+        ? 'LINEAR_ENDLESS'
+        : gameMode === 'LINEAR_ENDLESS'
+        ? 'LINEAR'
+        : gameMode === 'BINARY'
+        ? 'BINARY_ENDLESS'
+        : 'BINARY';
+    const labelMap: Record<string, string> = {
+      LINEAR: 'LINEAR',
+      LINEAR_ENDLESS: 'LINEAR ENDLESS CHASER',
+      BINARY: 'BINARY (8x8)',
+      BINARY_ENDLESS: 'BINARY ENDLESS CHASER',
+    };
+    applyModeSwitch(nextMode, labelMap[nextMode] || nextMode);
   };
 
   const handleRequestOpenLeaderboard = () => {
@@ -2358,68 +3040,354 @@ export const App: React.FC = () => {
                   </div>
                 ))}
 
-              {gameMode === 'BINARY' ? (
-                <div className="binary-stage-layout">
-                  {/* ROW 1, COL 1: SPACER ABOVE DECODER TABLE */}
-                  <div className="binary-grid-spacer" />
+              {(() => {
+                const renderCellClockGraphic = () => (
+                  <svg className="cell-clock-svg" viewBox="0 0 32 32" aria-hidden="true">
+                    <circle className="clock-outline-ring" cx="16" cy="16" r="13.8" />
+                    <line className="clock-tick" x1="16" y1="1.2" x2="16" y2="3.8" />
+                    <line className="clock-tick" x1="30.8" y1="16" x2="28.2" y2="16" />
+                    <line className="clock-tick" x1="16" y1="30.8" x2="16" y2="28.2" />
+                    <line className="clock-tick" x1="1.2" y1="16" x2="3.8" y2="16" />
+                  </svg>
+                );
 
-                  {/* ROW 1, COL 2: COMPACT 3-BIT INPUT SLOTS ABOVE THE 7x7 MATRIX */}
-                  <div className="binary-bit-slots">
-                    {[0, 1, 2].map((slotIdx) => {
-                      const targetCell = board.cells[binaryActiveTargetIdx];
-                      const targetDigit = targetCell ? targetCell.digit : 0;
-                      const isFilled = slotIdx < binaryBitCursor;
-                      const isCurrentSlot = slotIdx === binaryBitCursor && !isFinished;
-                      const isErrorSlot = binaryBitErrorSlot === slotIdx;
-                      const filledBitVal = (targetDigit >> (2 - slotIdx)) & 1;
+                const renderOutlineClockBgSvg = () => (
+                  <svg className="chrono-dial-bg-svg" viewBox="0 0 120 120" aria-hidden="true">
+                    {/* Outer thin chronograph rim & inner tick track */}
+                    <circle className="dial-svg-outer-rim" cx="60" cy="60" r="54" />
+                    <circle className="dial-svg-tick-ring" cx="60" cy="60" r="46" />
+                    <circle className="dial-svg-inner-ring" cx="60" cy="60" r="22" />
+                    {/* Subtle cardinal crosshair lines outside the center digit */}
+                    <line className="dial-svg-crosshair" x1="60" y1="25" x2="60" y2="38" />
+                    <line className="dial-svg-crosshair" x1="82" y1="60" x2="95" y2="60" />
+                    <line className="dial-svg-crosshair" x1="60" y1="82" x2="60" y2="95" />
+                    <line className="dial-svg-crosshair" x1="25" y1="60" x2="38" y2="60" />
+                    {/* 8 non-cardinal hour tick marks around the outline bezel */}
+                    <line className="dial-svg-hour-tick" x1="83" y1="20.2" x2="79.5" y2="26.2" />
+                    <line className="dial-svg-hour-tick" x1="99.8" y1="37" x2="93.8" y2="40.5" />
+                    <line className="dial-svg-hour-tick" x1="99.8" y1="83" x2="93.8" y2="79.5" />
+                    <line className="dial-svg-hour-tick" x1="83" y1="99.8" x2="79.5" y2="93.8" />
+                    <line className="dial-svg-hour-tick" x1="37" y1="99.8" x2="40.5" y2="93.8" />
+                    <line className="dial-svg-hour-tick" x1="20.2" y1="83" x2="26.2" y2="79.5" />
+                    <line className="dial-svg-hour-tick" x1="20.2" y1="37" x2="26.2" y2="40.5" />
+                    <line className="dial-svg-hour-tick" x1="37" y1="20.2" x2="40.5" y2="26.2" />
+                  </svg>
+                );
 
-                      return (
-                        <div
-                          key={slotIdx}
-                          className={`binary-bit-box ${isFilled ? 'filled' : ''} ${
-                            isCurrentSlot ? 'active-slot' : ''
-                          } ${isErrorSlot ? 'bit-error' : ''}`}
-                        >
-                          <span className="bit-slot-value">
-                            {isFilled ? filledBitVal : '_'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                const renderCellChronoDialOverlay = (idx: number) => (
+                  <>
+                    {!isFinished && activeClock && activeClock.cellIdx === idx && (
+                      <div className="chrono-dial-overlay">
+                        {renderOutlineClockBgSvg()}
+                        {activeClock.digits.map((cd, posIdx) => (
+                          <div
+                            key={posIdx}
+                            className={`chrono-dial-node pos-${posIdx} ${
+                              posIdx < activeClock.step
+                                ? 'done'
+                                : posIdx === activeClock.step
+                                ? 'active'
+                                : ''
+                            }`}
+                          >
+                            {cd}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!isFinished && closingClockDial && closingClockDial.cellIdx === idx && (
+                      <div key={closingClockDial.id} className="chrono-dial-overlay closing">
+                        {renderOutlineClockBgSvg()}
+                        {closingClockDial.digits.map((cd, posIdx) => (
+                          <div key={posIdx} className={`chrono-dial-node pos-${posIdx} done`}>
+                            {cd}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
 
-                  {/* ROW 2, COL 1: 0-7 BINARY REFERENCE TABLE (FLUSH TOP & BOTTOM WITH 7x7 MATRIX, NO ACTIVE HIGHLIGHT) */}
-                  <aside className="binary-reference-panel">
-                    <table className="binary-decoder-table">
-                      <thead>
-                        <tr>
-                          <th>DEC</th>
-                          <th>BIN</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => {
-                          const bStr = d.toString(2).padStart(3, '0');
+                const renderEndlessChaserHud = (colsPerRow: number) => {
+                  const activePlayerIdx = Math.max(0, engineRef.current.currentIndex);
+                  const activePlayerRow = Math.floor(activePlayerIdx / colsPerRow);
+                  const rowProf = getEndlessRowProfile(activePlayerRow);
+                  const rowScaleStep = colsPerRow === 13 ? 0.055 : 0.032;
+                  const rowScaleMax = colsPerRow === 13 ? 1.8 : 1.4;
+                  const rowScaleFactor = 1 + Math.min(rowScaleMax, activePlayerRow * rowScaleStep);
+                  const effectiveSpeedMult = (rowProf.speedMult * rowScaleFactor).toFixed(2);
+                  return (
+                    <div
+                      className={`endless-chaser-hud ${rowProf.colorClass}`}
+                      data-morph={boardMorphTick}
+                    >
+                      <span className="endless-hud-row">ROW {activePlayerRow + 1}</span>
+                      <span className="endless-hud-pace">
+                        CHASER: {rowProf.label} ({effectiveSpeedMult}x)
+                      </span>
+                    </div>
+                  );
+                };
+
+                if (gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS') {
+                  return (
+                    <div className="binary-stage-layout">
+                      {/* ROW 1, COL 1: SPACER ABOVE DECODER TABLE */}
+                      <div className="binary-grid-spacer" />
+
+                      {/* ROW 1, COL 2: COMPACT 3-BIT INPUT SLOTS ABOVE THE MATRIX */}
+                      <div className="binary-bit-slots">
+                        {[0, 1, 2].map((slotIdx) => {
+                          const targetCell = board.cells[binaryActiveTargetIdx];
+                          const targetDigit = targetCell ? targetCell.digit : 0;
+                          const isFilled = slotIdx < binaryBitCursor;
+                          const isCurrentSlot = slotIdx === binaryBitCursor && !isFinished;
+                          const isErrorSlot = binaryBitErrorSlot === slotIdx;
+                          const filledBitVal = (targetDigit >> (2 - slotIdx)) & 1;
+
                           return (
-                            <tr key={d}>
-                              <td className="ref-dec-col">{d}</td>
-                              <td className="ref-bin-col">{bStr}</td>
-                            </tr>
+                            <div
+                              key={slotIdx}
+                              className={`binary-bit-box ${isFilled ? 'filled' : ''} ${
+                                isCurrentSlot ? 'active-slot' : ''
+                              } ${isErrorSlot ? 'bit-error' : ''}`}
+                            >
+                              <span className="bit-slot-value">
+                                {isFilled ? filledBitVal : '_'}
+                              </span>
+                            </div>
                           );
                         })}
-                      </tbody>
-                    </table>
-                  </aside>
+                      </div>
 
-                  {/* ROW 2, COL 2: TIGHT 8x8 MATRIX */}
-                  <div className="board-grid-8x8">
+                      {/* ROW 2, COL 1: 0-7 BINARY REFERENCE TABLE */}
+                      <aside className="binary-reference-panel">
+                        <table className="binary-decoder-table">
+                          <thead>
+                            <tr>
+                              <th>DEC</th>
+                              <th>BIN</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => {
+                              const bStr = d.toString(2).padStart(3, '0');
+                              return (
+                                <tr key={d}>
+                                  <td className="ref-dec-col">{d}</td>
+                                  <td className="ref-bin-col">{bStr}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </aside>
+
+                      {/* ROW 2, COL 2: TIGHT 8x8 (OR 5-ROW ENDLESS + HUD) MATRIX */}
+                      <div className="binary-matrix-column">
+                        {gameMode === 'BINARY_ENDLESS' && renderEndlessChaserHud(8)}
+                        <div
+                          className={`board-grid-8x8 ${
+                            gameMode === 'BINARY_ENDLESS' ? 'endless-5row-board' : ''
+                          }`}
+                        >
+                          {gameMode === 'BINARY_ENDLESS'
+                            ? [0, 1, 2, 3, 4].map((visRow) => {
+                                const actualRow = endlessVisibleTopRow + visRow;
+                                const isVoid = actualRow < 0;
+                                const rowProf = !isVoid ? getEndlessRowProfile(actualRow) : null;
+                                return (
+                                  <div
+                                    key={isVoid ? `void-${visRow}` : `erow-${actualRow}`}
+                                    className={`endless-row-band ${
+                                      visRow === 2 ? 'endless-focus-row' : ''
+                                    } ${isVoid ? 'endless-void-row' : rowProf?.colorClass ?? ''}`}
+                                  >
+                                    {Array.from({ length: 8 }, (_, col) => {
+                                      if (isVoid) {
+                                        return (
+                                          <div
+                                            key={`void-${visRow}-${col}`}
+                                            className="cell binary-cell endless-void-cell"
+                                          />
+                                        );
+                                      }
+                                      const idx = actualRow * 8 + col;
+                                      const cell = board.cells[idx];
+                                      if (!cell) {
+                                        return (
+                                          <div
+                                            key={`empty-${idx}`}
+                                            className="cell binary-cell endless-void-cell"
+                                          />
+                                        );
+                                      }
+                                      return (
+                                        <div
+                                          key={idx}
+                                          ref={(el) => {
+                                            cellNodesRef.current[idx] = el;
+                                          }}
+                                          className="cell binary-cell"
+                                        >
+                                          {cell.isReinforced && (
+                                            <svg
+                                              className="cell-shield-svg"
+                                              viewBox="0 0 24 24"
+                                              aria-hidden="true"
+                                            >
+                                              <path
+                                                className="shield-outline-path"
+                                                d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                                              />
+                                            </svg>
+                                          )}
+                                          {cell.isClock && renderCellClockGraphic()}
+                                          <span className="cell-digit">
+                                            <FuturisticDigit digit={cell.digit} />
+                                          </span>
+                                          {renderCellChronoDialOverlay(idx)}
+                                        </div>
+                                      );
+                                    })}
+                                    {!isVoid && (
+                                      <div className="endless-chaser-line-track">
+                                        <div
+                                          ref={(el) => {
+                                            endlessRowLineRefs.current[actualRow] = el;
+                                          }}
+                                          className="endless-chaser-line-fill"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            : board.cells.map((cell, idx) => (
+                                <div
+                                  key={idx}
+                                  ref={(el) => {
+                                    cellNodesRef.current[idx] = el;
+                                  }}
+                                  className="cell binary-cell"
+                                >
+                                  {cell.isReinforced && (
+                                    <svg
+                                      className="cell-shield-svg"
+                                      viewBox="0 0 24 24"
+                                      aria-hidden="true"
+                                    >
+                                      <path
+                                        className="shield-outline-path"
+                                        d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                                      />
+                                    </svg>
+                                  )}
+                                  {cell.isClock && renderCellClockGraphic()}
+                                  <span className="cell-digit">
+                                    <FuturisticDigit digit={cell.digit} />
+                                  </span>
+                                  {renderCellChronoDialOverlay(idx)}
+                                </div>
+                              ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (gameMode === 'LINEAR_ENDLESS') {
+                  return (
+                    <div className="linear-endless-stage-layout">
+                      <div className="linear-endless-box-stack">
+                        {renderEndlessChaserHud(13)}
+                        <div className="board-grid-21x13 endless-5row-board">
+                          {[0, 1, 2, 3, 4].map((visRow) => {
+                            const actualRow = endlessVisibleTopRow + visRow;
+                            const isVoid = actualRow < 0;
+                            const rowProf = !isVoid ? getEndlessRowProfile(actualRow) : null;
+                            return (
+                              <div
+                                key={isVoid ? `void-${visRow}` : `erow-${actualRow}`}
+                                className={`endless-row-band ${
+                                  visRow === 2 ? 'endless-focus-row' : ''
+                                } ${isVoid ? 'endless-void-row' : rowProf?.colorClass ?? ''}`}
+                              >
+                                {Array.from({ length: 13 }, (_, col) => {
+                                  if (isVoid) {
+                                    return (
+                                      <div
+                                        key={`void-${visRow}-${col}`}
+                                        className="cell endless-void-cell"
+                                      />
+                                    );
+                                  }
+                                  const idx = actualRow * 13 + col;
+                                  const cell = board.cells[idx];
+                                  if (!cell) {
+                                    return (
+                                      <div
+                                        key={`empty-${idx}`}
+                                        className="cell endless-void-cell"
+                                      />
+                                    );
+                                  }
+                                  return (
+                                    <div
+                                      key={idx}
+                                      ref={(el) => {
+                                        cellNodesRef.current[idx] = el;
+                                      }}
+                                      className="cell"
+                                    >
+                                      {cell.isReinforced && (
+                                        <svg
+                                          className="cell-shield-svg"
+                                          viewBox="0 0 24 24"
+                                          aria-hidden="true"
+                                        >
+                                          <path
+                                            className="shield-outline-path"
+                                            d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
+                                          />
+                                        </svg>
+                                      )}
+                                      {cell.isClock && renderCellClockGraphic()}
+                                      <span className="cell-digit">
+                                        <FuturisticDigit digit={cell.digit} />
+                                      </span>
+                                      {renderCellChronoDialOverlay(idx)}
+                                    </div>
+                                  );
+                                })}
+                                {!isVoid && (
+                                  <div className="endless-chaser-line-track">
+                                    <div
+                                      ref={(el) => {
+                                        endlessRowLineRefs.current[actualRow] = el;
+                                      }}
+                                      className="endless-chaser-line-fill"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="board-grid-21x13">
                     {board.cells.map((cell, idx) => (
                       <div
                         key={idx}
                         ref={(el) => {
                           cellNodesRef.current[idx] = el;
                         }}
-                        className="cell binary-cell"
+                        className="cell"
                       >
                         {cell.isReinforced && (
                           <svg
@@ -2433,48 +3401,21 @@ export const App: React.FC = () => {
                             />
                           </svg>
                         )}
+                        {cell.isClock && renderCellClockGraphic()}
                         <span className="cell-digit">
                           <FuturisticDigit digit={cell.digit} />
                         </span>
+                        {renderCellChronoDialOverlay(idx)}
                       </div>
                     ))}
                   </div>
-                </div>
-              ) : (
-                <div className="board-grid-21x13">
-                  {board.cells.map((cell, idx) => (
-                    <div
-                      key={idx}
-                      ref={(el) => {
-                        cellNodesRef.current[idx] = el;
-                      }}
-                      className="cell"
-                    >
-                      {cell.isReinforced && (
-                        <svg
-                          className="cell-shield-svg"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                        >
-                          <path
-                            className="shield-outline-path"
-                            d="M12 2L4 5.4V11.2C4 16.5 7.4 21.3 12 22.8C16.6 21.3 20 16.5 20 11.2V5.4L12 2Z"
-                          />
-                        </svg>
-                      )}
-                      <span className="cell-digit">
-                        <FuturisticDigit digit={cell.digit} />
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+                );
+              })()}
             </div>
-
             {isFinished && (
               <div className="victory-overlay">
                 <div className="victory-card">
-                  <h2>BOARD CLEARED!</h2>
+                  <h2>{endlessCaughtByChaser ? 'CHASER CAUGHT YOU!' : 'BOARD CLEARED!'}</h2>
                   <p className="victory-score">
                     FINAL SCORE:{' '}
                     <strong>{engineRef.current.score.toLocaleString('en-US')}</strong>
@@ -2488,9 +3429,14 @@ export const App: React.FC = () => {
                     | Avg Pace: {avgSpeedMs ?? '--'} ms/key | Mistakes: {mistakesCount} |{' '}
                     {gameMode === 'OMNI'
                       ? `Quantum Merges: ${quantumMergesCount}`
-                      : gameMode === 'BINARY'
+                      : gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS'
                       ? `Overclock Bonuses: ${sequencesHitCount}`
+                      : gameMode === 'LINEAR_ENDLESS'
+                      ? `Secret Sequences: ${sequencesHitCount}`
                       : `Secret Sequences: ${sequencesHitCount}/${board.sequences.length}`}
+                    {gameMode === 'LINEAR_ENDLESS' || gameMode === 'BINARY_ENDLESS'
+                      ? ` | Shields: ${reinforcedHitCount} | Clocks: ${clocksHitCount}`
+                      : ` | Clocks: ${clocksHitCount}/${board.totalClockCount ?? 0}`}
                   </p>
 
                   {fatigueAlert && (
@@ -2612,6 +3558,7 @@ export const App: React.FC = () => {
             currentUser={currentUser}
             progressNodeRef={progressNodeRef}
             onQuickToggleMode={handleQuickToggleMode}
+            onToggleEndless={handleToggleEndless}
             onOpenAuth={() => setIsAuthOpen(true)}
             onOpenLeaderboard={handleRequestOpenLeaderboard}
             onOpenSettings={() => setIsBindingsOpen(true)}
@@ -2630,11 +3577,13 @@ export const App: React.FC = () => {
             quantumMergesCount={quantumMergesCount}
             reinforcedHitCount={reinforcedHitCount}
             totalReinforcedCount={board.totalReinforcedCount}
+            clocksHitCount={clocksHitCount}
+            totalClocksCount={board.totalClockCount ?? 0}
           />
 
           {/* VERTICAL MOBILE TOUCH CONTROLLER (CYBER-NUMPAD AT BOTTOM OF PORTRAIT SCREEN) */}
           <section className="mobile-cyber-numpad" aria-label="Touch Digit Controller">
-            {gameMode === 'BINARY' ? (
+            {gameMode === 'BINARY' || gameMode === 'BINARY_ENDLESS' ? (
               <div className="mobile-binary-dual-pad">
                 {[0, 1].map((bitVal) => (
                   <button
@@ -2774,6 +3723,10 @@ export const App: React.FC = () => {
         currentNick={nickLetters.join('')}
         onAuthSuccess={(user) => {
           applyUserProfileSettings(user);
+          refreshLeaderboard();
+        }}
+        onProfileUpdate={(user) => {
+          setCurrentUser(user);
           refreshLeaderboard();
         }}
         onLogout={() => {

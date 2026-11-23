@@ -7,7 +7,12 @@ import {
   setStoredToken,
   UserProfile,
 } from './apiClient';
-import { UserBadge, BadgeList, BadgeInspectModal } from './BadgeIcons';
+import {
+  UserBadge,
+  BadgeIcon,
+  BadgeInspectModal,
+  getFeaturedBadgesForDisplay,
+} from './BadgeIcons';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -40,6 +45,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [profileFavMode, setProfileFavMode] = useState<GameMode>(
     currentUser?.preferredMode || 'LINEAR'
   );
+  const [profileFeaturedBadges, setProfileFeaturedBadges] = useState<string[]>(() =>
+    getFeaturedBadgesForDisplay(currentUser?.badges, currentUser?.featuredBadges).map((b) => b.code)
+  );
   const [profileSaveMsg, setProfileSaveMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,11 +57,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (isOpen && currentUser) {
       setProfileNick(currentUser.nick || 'AAA');
       setProfileFavMode(currentUser.preferredMode || 'LINEAR');
+      setProfileFeaturedBadges(
+        getFeaturedBadgesForDisplay(currentUser.badges, currentUser.featuredBadges).map(
+          (b) => b.code
+        )
+      );
       setProfileSaveMsg(null);
     }
   }, [isOpen, currentUser]);
 
   if (!isOpen) return null;
+
+  const handleToggleFeaturedBadge = (badgeCode: string) => {
+    setProfileSaveMsg(null);
+    const upperCode = badgeCode.toUpperCase();
+    setProfileFeaturedBadges((prev) => {
+      if (prev.includes(upperCode)) {
+        return prev.filter((c) => c !== upperCode);
+      }
+      if (prev.length >= 3) {
+        return [...prev.slice(1), upperCode];
+      }
+      return [...prev, upperCode];
+    });
+  };
 
   const handleSaveProfileParams = async () => {
     if (!currentUser) return;
@@ -69,6 +96,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const updated = await apiUpdateUserSettings({
         nick: cleanNick,
         preferredMode: profileFavMode,
+        featuredBadges: profileFeaturedBadges,
       });
       if (updated) {
         if (onProfileUpdate) {
@@ -169,16 +197,39 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
 
-            {/* PILOT COLLECTED BADGES SHOWCASE (COMPACT CLICKABLE ICONS WITHOUT TILES OR LABELS) */}
+            {/* PILOT COLLECTED BADGES SHOWCASE (CLICK TO INSPECT // PIN MAX 3 TO LEADERBOARD) */}
             <div className="profile-badges-section">
-              <span className="hud-label">EARNED PILOT BADGES (CLICK TO INSPECT)</span>
+              <span className="hud-label">
+                EARNED PILOT BADGES ({profileFeaturedBadges.length}/3 PINNED NEXT TO NAME)
+              </span>
               {currentUser.badges && currentUser.badges.length > 0 ? (
-                <div className="profile-badges-inline-strip">
-                  <BadgeList
-                    badges={currentUser.badges}
-                    size={28}
-                    onInspectBadge={(b) => setInspectedBadge(b)}
-                  />
+                <div className="profile-badges-picker-grid">
+                  {currentUser.badges.map((b) => {
+                    const isPinned = profileFeaturedBadges.includes(b.code.toUpperCase());
+                    return (
+                      <div
+                        key={b.code}
+                        className={`profile-badge-pick-item ${isPinned ? 'pinned' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          className="pilot-badge-btn"
+                          title={`${b.title} - Click icon to inspect`}
+                          onClick={() => setInspectedBadge(b)}
+                        >
+                          <BadgeIcon code={b.code} size={28} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`badge-pin-toggle-btn ${isPinned ? 'active' : ''}`}
+                          title={isPinned ? 'Pinned next to name (click to unpin)' : 'Pin next to name (max 3)'}
+                          onClick={() => handleToggleFeaturedBadge(b.code)}
+                        >
+                          {isPinned ? '★ PINNED' : '☆ PIN'}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="profile-no-badges">
