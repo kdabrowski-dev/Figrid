@@ -3780,6 +3780,8 @@ body {
 .mode-toggle-pair {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
   gap: 6px;
 }
 

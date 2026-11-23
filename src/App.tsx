@@ -2273,11 +2273,13 @@ export const App: React.FC = () => {
         }
 
         let clockTriggeredNow = false;
-        if (deduplicated.length === 1) {
-          const winHeadIdx = deduplicated[0].headIndex;
-          const winCell = board.cells[winHeadIdx];
-          if (triggerClockForCell(winHeadIdx, winCell, now)) {
+        for (let bIdx = 0; bIdx < deduplicated.length; bIdx++) {
+          const headIdx = deduplicated[bIdx].headIndex;
+          const headCell = board.cells[headIdx];
+          const headNeedsShield = headCell.isReinforced && !deduplicated[bIdx].shieldCrackedOnHead;
+          if (!headNeedsShield && triggerClockForCell(headIdx, headCell, now)) {
             clockTriggeredNow = true;
+            break;
           }
         }
 

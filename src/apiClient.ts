@@ -293,7 +293,7 @@ export async function apiFetchSharedLeaderboard(): Promise<{
   online: boolean;
 }> {
   try {
-    const [linearRes, omniRes, binaryRes] = await Promise.all([
+    const [linearRes, omniRes, binaryRes, linearEndRes, binaryEndRes] = await Promise.all([
       fetch(`${getApiBaseUrl()}/api/leaderboard?mode=LINEAR&limit=200`, {
         method: 'GET',
         headers: buildHeaders(false),
@@ -306,16 +306,28 @@ export async function apiFetchSharedLeaderboard(): Promise<{
         method: 'GET',
         headers: buildHeaders(false),
       }),
+      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=LINEAR_ENDLESS&limit=200`, {
+        method: 'GET',
+        headers: buildHeaders(false),
+      }),
+      fetch(`${getApiBaseUrl()}/api/leaderboard?mode=BINARY_ENDLESS&limit=200`, {
+        method: 'GET',
+        headers: buildHeaders(false),
+      }),
     ]);
 
     if (linearRes.ok && omniRes.ok) {
       const linearJson = await linearRes.json();
       const omniJson = await omniRes.json();
       const binaryJson = binaryRes.ok ? await binaryRes.json() : { data: [] };
+      const linearEndJson = linearEndRes.ok ? await linearEndRes.json() : { data: [] };
+      const binaryEndJson = binaryEndRes.ok ? await binaryEndRes.json() : { data: [] };
       const rawLinear = Array.isArray(linearJson?.data) ? linearJson.data : [];
       const rawOmni = Array.isArray(omniJson?.data) ? omniJson.data : [];
       const rawBinary = Array.isArray(binaryJson?.data) ? binaryJson.data : [];
-      const combined = [...rawLinear, ...rawOmni, ...rawBinary];
+      const rawLinearEnd = Array.isArray(linearEndJson?.data) ? linearEndJson.data : [];
+      const rawBinaryEnd = Array.isArray(binaryEndJson?.data) ? binaryEndJson.data : [];
+      const combined = [...rawLinear, ...rawOmni, ...rawBinary, ...rawLinearEnd, ...rawBinaryEnd];
 
       const entries: LeaderboardEntry[] = combined.map((item: Record<string, unknown>) =>
         mapRawScoreEntry(item)

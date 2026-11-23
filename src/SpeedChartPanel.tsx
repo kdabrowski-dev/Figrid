@@ -139,19 +139,6 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
             </span>
           </div>
           <div className="mode-toggle-pair">
-            <button
-              type="button"
-              className={`btn-arcade small ${
-                gameMode === 'OMNI' ? 'gold' : isBinaryLike ? 'magenta' : 'cyan'
-              }`}
-              title="Switch between Linear, Omni-8, and Binary mode"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onQuickToggleMode();
-              }}
-            >
-              MODE: {gameMode === 'OMNI' ? 'OMNI-8' : isBinaryLike ? 'BINARY' : 'LINEAR'}
-            </button>
             {gameMode !== 'OMNI' && (
               <button
                 type="button"
@@ -165,6 +152,19 @@ export const SpeedChartPanel: React.FC<SpeedChartPanelProps> = ({
                 {isEndlessMode ? 'ENDLESS: ON' : 'ENDLESS'}
               </button>
             )}
+            <button
+              type="button"
+              className={`btn-arcade small ${
+                gameMode === 'OMNI' ? 'gold' : isBinaryLike ? 'magenta' : 'cyan'
+              }`}
+              title="Switch between Linear, Omni-8, and Binary mode"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onQuickToggleMode();
+              }}
+            >
+              MODE: {gameMode === 'OMNI' ? 'OMNI-8' : isBinaryLike ? 'BINARY' : 'LINEAR'}
+            </button>
           </div>
         </div>
 
