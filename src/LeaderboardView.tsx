@@ -726,8 +726,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                             {entry.nick}
                           </button>
                           <BadgeList
-                            badges={entry.badges}
-                            size={rank === 1 ? 24 : 20}
+                            badges={getFeaturedBadgesForDisplay(
+                              entry.badges,
+                              entry.featuredBadges
+                            )}
+                            size={rank === 1 ? 22 : 18}
                             onInspectBadge={(b) => setInspectedBadge(b)}
                           />
                         </div>
